@@ -7,10 +7,11 @@ import org.qcri.rheem.api._
 import org.qcri.rheem.core.api.{Configuration, RheemContext}
 import org.qcri.rheem.core.function.FunctionDescriptor.ExtendedSerializableFunction
 import org.qcri.rheem.core.function.ExecutionContext
+import org.qcri.rheem.core.optimizer.costs.LoadProfileEstimators
 import org.qcri.rheem.java.Java
 import org.qcri.rheem.spark.Spark
-
 import scala.util.Random
+import scala.collection.JavaConversions._
 
 object kmeans {
   def main(args: Array[String]) {
@@ -53,7 +54,7 @@ object kmeans {
     class SelectNearestCentroid extends ExtendedSerializableFunction[Point, TaggedPoint] {
 
       /** Keeps the broadcasted centroids. */
-      var centroids: util.Collection[TaggedPoint] = _
+      var centroids: Iterable[TaggedPoint] = _
 
       override def open(executionCtx: ExecutionContext) = {
         centroids = executionCtx.getBroadcast[TaggedPoint]("centroids")
@@ -63,15 +64,17 @@ object kmeans {
         var minDistance = Double.PositiveInfinity
         var nearestCentroidId = -1
         for (centroid <- centroids) {
-          val distance = point.distanceTo(centroid)
+          val distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5)
           if (distance < minDistance) {
             minDistance = distance
-            nearestCentroidId = centroid.centroidId
+            nearestCentroidId = centroid.cluster
           }
         }
         new TaggedPointCounter(point.x, point.y, nearestCentroidId, 1)
       }
     }
+
+    val configuration = new Configuration
 
     // Do the k-means loop.
     val finalCentroids = initialCentroids.repeat(iterations, { currentCentroids =>

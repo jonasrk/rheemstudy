@@ -9,6 +9,37 @@
     <version>1.0-SNAPSHOT</version>
 
 
+    <!-- Add a Scala compiler for our app. -->
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>net.alchim31.maven</groupId>
+                    <artifactId>scala-maven-plugin</artifactId>
+                    <version>3.2.2</version>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>compile</goal>
+                                <goal>testCompile</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <scalaVersion>${scala.version}</scalaVersion>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>net.alchim31.maven</groupId>
+                <artifactId>scala-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+
 
     <dependencies>
         <!-- Make various Rheem modules available for our app. -->
@@ -40,6 +71,9 @@
 
 
 
+
+
+
         <!-- We need to import the actual versions of execution platforms that we want to use. -->
         <dependency>
             <groupId>org.apache.spark</groupId>
@@ -64,6 +98,11 @@
                 </exclusion>
             </exclusions>
             <scope>${external.platforms.scope}</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>${scala.version}</version>
         </dependency>
 
 

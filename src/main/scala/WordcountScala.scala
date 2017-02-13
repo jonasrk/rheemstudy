@@ -1,7 +1,5 @@
 /**
   * Created by jonas on 2/13/17.
-  *//**
-  * Created by jonas on 2/13/17.
   */
 
 import org.qcri.rheem.api._

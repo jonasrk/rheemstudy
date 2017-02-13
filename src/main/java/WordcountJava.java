@@ -58,7 +58,5 @@ public class WordcountJava {
                 .collect();
 
         System.out.println(wordcounts);
-
     }
-
 }

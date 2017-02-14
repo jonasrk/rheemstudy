@@ -30,6 +30,13 @@ object kmeans {
       .withJobName(s"k-means ($inputUrl, k=$k, $iterations iterations)")
       .withUdfJarsOf(this.getClass)
 
+    case class Point(x: Double, y: Double)
+    case class TaggedPoint(x: Double, y: Double, cluster: Int)
+    case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long) {
+      def add_points(that: TaggedPointCounter) = TaggedPointCounter(this.x + that.x, this.y + that.y, this.cluster, this.count + that.count)
+      def average = TaggedPointCounter(x / count, y / count, cluster, 0)
+    }
+
     // Read and parse the input file(s).
     val points = planBuilder
       .readTextFile(inputUrl).withName("Read file")
@@ -38,26 +45,20 @@ object kmeans {
         Point(fields(0).toDouble, fields(1).toDouble)
       }.withName("Create points")
 
-    case class Point(x: Double, y: Double)
-    case class TaggedPoint(x: Double, y: Double, cluster: Int)
-    case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long) {
-      def +(that: TaggedPointCounter) = TaggedPointCounter(this.x + that.x, this.y + that.y, this.cluster, this.count + that.count)
-      def average = TaggedPoint(x / count, y / count, cluster)
-    }
 
     // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
-      .loadCollection(for (i <- 1 to n) yield TaggedPoint(random.nextGaussian(), random.nextGaussian(), i)).withName("Load random centroids")
+      .loadCollection(for (i <- 1 to n) yield TaggedPointCounter(random.nextGaussian(), random.nextGaussian(), i, 0)).withName("Load random centroids")
 
     // Declare UDF to select centroid for each data point.
-    class SelectNearestCentroid extends ExtendedSerializableFunction[Point, TaggedPoint] {
+    class SelectNearestCentroid extends ExtendedSerializableFunction[Point, TaggedPointCounter] {
 
       /** Keeps the broadcasted centroids. */
-      var centroids: Iterable[TaggedPoint] = _
+      var centroids: Iterable[TaggedPointCounter] = _
 
       override def open(executionCtx: ExecutionContext) = {
-        centroids = executionCtx.getBroadcast[TaggedPoint]("centroids")
+        centroids = executionCtx.getBroadcast[TaggedPointCounter]("centroids")
       }
 
       override def apply(point: Point): TaggedPointCounter = {
@@ -74,24 +75,21 @@ object kmeans {
       }
     }
 
-    val configuration = new Configuration
-
     // Do the k-means loop.
     val finalCentroids = initialCentroids.repeat(iterations, { currentCentroids =>
       points
-        .mapJava(
-          new SelectNearestCentroid,
-          udfLoad = LoadProfileEstimators.createFromSpecification(
-            "my.udf.costfunction.key", configuration
-          )
-        )
+        .mapJava(new SelectNearestCentroid)
         .withBroadcast(currentCentroids, "centroids").withName("Find nearest centroid")
-        .reduceByKey(_.cluster, _ + _).withName("Add up points")
+        .reduceByKey(_.cluster, _.add_points(_)).withName("Add up points")
         .withCardinalityEstimator(k)
         .map(_.average).withName("Average points")
     }).withName("Loop")
 
       // Collect the results.
       .collect()
+
+    println(finalCentroids)
   }
+
+
 }

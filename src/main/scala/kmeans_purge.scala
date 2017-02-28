@@ -10,7 +10,7 @@ import org.qcri.rheem.spark.Spark
 import scala.util.Random
 import scala.collection.JavaConversions._
 
-object kmeans {
+object kmeans_purge {
   def main(args: Array[String]) {
 
     // Settings
@@ -74,6 +74,7 @@ object kmeans {
     // Do the k-means loop.
     val finalCentroids = initialCentroids.repeat(iterations, { currentCentroids =>
       points
+        .filter(_.x >= 0.5)
         .mapJava(new SelectNearestCentroid)
         .withBroadcast(currentCentroids, "centroids").withName("Find nearest centroid")
         .reduceByKey(_.cluster, _.add_points(_)).withName("Add up points")

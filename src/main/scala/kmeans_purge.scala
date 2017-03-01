@@ -183,20 +183,53 @@ object kmeans_purge {
     println(centroids)
 
     var filtered_centroids = List[TaggedPointCounter]()
+    var filtered_points = List[TaggedPointCounter]()
+
+    var points_list = planBuilder
+      .readTextFile(inputUrl).withName("Read file")
+      .map { line =>
+        val fields = line.split(",")
+        TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 1)
+      }.withName("Create points")
+      .mapJava(new SelectNearestCentroidForPoint)
+      .withBroadcast(initialCentroids, "centroids").withName("Find nearest centroid")
+      .collect()
 
     for (new_centroid <- newCentroids){
       for (old_centroid <- centroids){
         if (new_centroid.cluster == old_centroid.cluster){
           val distance = Math.pow(Math.pow(old_centroid.x - new_centroid.x, 2) + Math.pow(old_centroid.y - new_centroid.y, 2), 0.5)
           println(distance)
-          if (distance > 0.01) {
+          if (distance > 0.1) {
             filtered_centroids ::= new_centroid
+            points_list = points_list.filter(_.cluster == old_centroid.cluster)
           }
         }
       }
     }
+
     println("filtered_centroids")
     println(filtered_centroids)
+    println("points_list")
+    println(points_list)
+
+    val filtered_centroids_quanta = planBuilder.loadCollection(filtered_centroids)
+
+    println(filtered_centroids_quanta)
+
+    val pointsagain = planBuilder
+      .readTextFile(inputUrl).withName("Read file")
+      .map { line =>
+        val fields = line.split(",")
+        TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 1)
+      }.withName("Create points")
+
+    val points_second_iteration = pointsagain
+      .mapJava(new SelectNearestCentroidForPoint)
+      .withBroadcast(filtered_centroids_quanta, "centroids").withName("Find nearest centroid")
+      .collect()
+
+    println(points_second_iteration)
 
   }
 }

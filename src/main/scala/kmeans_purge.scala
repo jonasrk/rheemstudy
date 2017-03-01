@@ -14,10 +14,10 @@ object kmeans_purge {
   def main(args: Array[String]) {
 
     // Settings
-    val inputUrl = "file:/Users/jonas/tmp_kmeans.txt"
-    val k = 4
+    val inputUrl = "file:/Users/jonas/tmp_kmeans_big.txt"
+    val k = 10
     val iterations = 2
-    val epsilon = 0.01
+    val epsilon = 0.001
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -77,13 +77,19 @@ object kmeans_purge {
         TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 1)
       }.withName("Create points").collect()
 
-
     var filtered_centroids = List[TaggedPointCounter]()
-    var filtered_points = List[TaggedPointCounter]()
+    var filtered_points = Iterable[TaggedPointCounter]()
+
+
+    println("## initial_centroid_list: ")
+    println(initial_centroid_list)
+
+    println("## initial_points_list: ")
+    println(initial_points_list)
+
 
     var i = 0
     while (i < iterations) {
-      i += 1
 
       var iteration_start_centroids = Iterable[TaggedPointCounter]()
       var iteration_start_points = Iterable[TaggedPointCounter]()
@@ -110,21 +116,28 @@ object kmeans_purge {
         .map(_.average).withName("Average points").collect()
 
       filtered_centroids = List[TaggedPointCounter]()
-      filtered_points = List[TaggedPointCounter]()
+      filtered_points = points_w_cl_centroid_list
 
       for (new_centroid <- new_centroids_list) {
         for (old_centroid <- iteration_start_centroids) {
           if (new_centroid.cluster == old_centroid.cluster) {
             val distance = Math.pow(Math.pow(old_centroid.x - new_centroid.x, 2) + Math.pow(old_centroid.y - new_centroid.y, 2), 0.5)
-            println("## distance")
-            println(distance)
-            if (distance > epsilon) {
+            if (distance < epsilon) {
+              filtered_points = filtered_points.filter(_.cluster != new_centroid.cluster)
+            } else {
               filtered_centroids ::= new_centroid
-              points_w_cl_centroid_list = points_w_cl_centroid_list.filter(_.cluster == old_centroid.cluster)
             }
           }
         }
       }
+
+      println("## After iteration " + i)
+      println("filtered_centroids:")
+      println(filtered_centroids)
+      println("filtered_points:")
+      println(filtered_points)
+
+      i += 1
     }
   }
 }

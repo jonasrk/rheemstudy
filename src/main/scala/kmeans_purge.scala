@@ -17,7 +17,7 @@ object kmeans_purge {
     val inputUrl = "file:/Users/jonas/tmp_kmeans_big.txt"
     val k = 10
     val iterations = 2
-    val epsilon = 0.001
+    val epsilon = 0.01
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)

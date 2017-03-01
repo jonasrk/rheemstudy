@@ -172,12 +172,31 @@ object kmeans_purge {
       .mapJava(new SelectNearestCentroidForPoint)
       .withBroadcast(initialCentroids, "centroids").withName("Find nearest centroid")
 
+    val newCentroids = points3
+      .reduceByKey(_.cluster, _.add_points(_)).withName("Add up points")
+      .withCardinalityEstimator(k)
+      .map(_.average).withName("Average points").collect()
 
-    val points3_output = points3.collect()
+    // compare new to old centroids
 
-    println("points3_output:")
-    println(points3_output)
+    println(newCentroids)
+    println(centroids)
 
+    var filtered_centroids = List[TaggedPointCounter]()
+
+    for (new_centroid <- newCentroids){
+      for (old_centroid <- centroids){
+        if (new_centroid.cluster == old_centroid.cluster){
+          val distance = Math.pow(Math.pow(old_centroid.x - new_centroid.x, 2) + Math.pow(old_centroid.y - new_centroid.y, 2), 0.5)
+          println(distance)
+          if (distance > 0.01) {
+            filtered_centroids ::= new_centroid
+          }
+        }
+      }
+    }
+    println("filtered_centroids")
+    println(filtered_centroids)
 
   }
 }

@@ -127,32 +127,27 @@ object kmeans_purge {
     // Declare UDF to select centroid for each data point.
     class SelectNearestCentroidForPoint extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
 
+      /** Keeps the broadcasted centroids. */
+      var centroids: Iterable[TaggedPointCounter] = _
+
       override def open(executionCtx: ExecutionContext) = {
+        centroids = executionCtx.getBroadcast[TaggedPointCounter]("centroids")
       }
 
       override def apply(point: TaggedPointCounter): TaggedPointCounter = {
-        if (point.x < 0.5){
-          return point
-        } else {
-          return null
+        var closest_centroid = -1
+        var minDistance = Double.PositiveInfinity
+        for (centroid <- centroids){
+          val distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5)
+          if (distance < minDistance){
+            closest_centroid = centroid.cluster
+          }
         }
 
-        //        var minDistance = Double.PositiveInfinity
-        //        var nearestCentroidId = -1
-        //        for (centroid <- centroids) {
-        //          val distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5)
-        //          if (distance < minDistance) {
-        //            minDistance = distance
-        //            nearestCentroidId = centroid.cluster
-        //          }
-        //        }
-        //        if (nearestCentroidId != -1){
-        //          println("### Not with a removed centroid")
-        //          return new TaggedPointCounter(point.x, point.y, -1, 1)
-        //        } else {
-        //          println("### With a removed centroid")
-        //          return new TaggedPointCounter(point.x, point.y, -1, 1)
-        //        }
+
+        return new TaggedPointCounter(point.x, point.y, closest_centroid, 1)
+
+
       }
     }
 
@@ -175,6 +170,8 @@ object kmeans_purge {
 
     val points3 = points2
       .mapJava(new SelectNearestCentroidForPoint)
+      .withBroadcast(initialCentroids, "centroids").withName("Find nearest centroid")
+
 
     val points3_output = points3.collect()
 

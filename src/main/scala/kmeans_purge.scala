@@ -36,7 +36,7 @@ object kmeans_purge {
     // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
-      .loadCollection(for (i <- 1 to k) yield TaggedPointCounter(random.nextGaussian(), random.nextGaussian(), i, 0)).withName("Load random centroids")
+      .loadCollection(for (i <- 1 to k) yield TaggedPointCounter(random.nextFloat(), random.nextFloat(), i, 0)).withName("Load random centroids")
 
     // Declare UDF to select centroid for each data point.
     class SelectNearestCentroidForPoint extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {

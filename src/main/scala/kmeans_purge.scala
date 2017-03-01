@@ -26,103 +26,15 @@ object kmeans_purge {
       .withJobName(s"k-means ($inputUrl, k=$k, $iterations iterations)")
       .withUdfJarsOf(this.getClass)
 
-    case class Point(x: Double, y: Double)
-    case class TaggedPoint(x: Double, y: Double, old_x: Double, old_y: Double, cluster: Int)
     case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long) {
       def add_points(that: TaggedPointCounter) = TaggedPointCounter(this.x + that.x, this.y + that.y, this.cluster, this.count + that.count)
       def average = TaggedPointCounter(x / count, y / count, cluster, 0)
     }
 
-    // Read and parse the input file(s).
-    val points = planBuilder
-      .readTextFile(inputUrl).withName("Read file")
-      .map { line =>
-        val fields = line.split(",")
-        Point(fields(0).toDouble, fields(1).toDouble)
-      }.withName("Create points")
-
-
     // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
       .loadCollection(for (i <- 1 to k) yield TaggedPointCounter(random.nextGaussian(), random.nextGaussian(), i, 0)).withName("Load random centroids")
-
-    // Declare UDF to select centroid for each data point.
-    class SelectNearestCentroid extends ExtendedSerializableFunction[Point, TaggedPointCounter] {
-
-      /** Keeps the broadcasted centroids. */
-      var centroids: Iterable[TaggedPointCounter] = _
-
-      override def open(executionCtx: ExecutionContext) = {
-        centroids = executionCtx.getBroadcast[TaggedPointCounter]("centroids")
-      }
-
-      override def apply(point: Point): TaggedPointCounter = {
-        var minDistance = Double.PositiveInfinity
-        var nearestCentroidId = -1
-        for (centroid <- centroids) {
-          val distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5)
-          if (distance < minDistance) {
-            minDistance = distance
-            nearestCentroidId = centroid.cluster
-          }
-        }
-        if (nearestCentroidId != -1){
-          println("### Not with a removed centroid")
-          return new TaggedPointCounter(point.x, point.y, -1, 1)
-        } else {
-          println("### With a removed centroid")
-          return new TaggedPointCounter(point.x, point.y, -1, 1)
-        }
-      }
-    }
-
-    // Declare UDF to eliminate centroids that did not change much.
-    class EliminateCentroids extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
-
-      /** Keeps the broadcasted centroids. */
-      var centroids: Iterable[TaggedPointCounter] = _
-
-      override def open(executionCtx: ExecutionContext) = {
-        centroids = executionCtx.getBroadcast[TaggedPointCounter]("centroids")
-      }
-
-      override def apply(newCentroid: TaggedPointCounter): TaggedPointCounter = {
-        var change_too_small = false
-        for (centroid <- centroids) {
-          val distance = Math.pow(Math.pow(newCentroid.x - centroid.x, 2) + Math.pow(newCentroid.y - centroid.y, 2), 0.5)
-          if (distance < 0.00001) {
-            change_too_small = true
-          }
-        }
-        if (change_too_small == true) {
-          println("### too small!")
-          return new TaggedPointCounter(newCentroid.x, newCentroid.y, -1, 1)
-        } else {
-          println("### NOT too small!")
-          return new TaggedPointCounter(newCentroid.x, newCentroid.y, newCentroid.cluster, 0)
-        }
-
-      }
-    }
-
-    // Do the k-means loop.
-    //    val finalCentroids = initialCentroids.repeat(iterations, { currentCentroids =>
-    //      points
-    //        .mapJava(new SelectNearestCentroid)
-    //        .withBroadcast(currentCentroids, "centroids").withName("Find nearest centroid")
-    //        .reduceByKey(_.cluster, _.add_points(_)).withName("Add up points")
-    //        .withCardinalityEstimator(k)
-    //        .map(_.average).withName("Average points")
-    //        .mapJava(new EliminateCentroids)
-    //        .withBroadcast(currentCentroids, "centroids").withName("Find nearest centroid")
-    //    }).withName("Loop")
-    //
-    //      // Collect the results.
-    //      .collect()
-    //
-    //    println(finalCentroids)
-
 
     // Declare UDF to select centroid for each data point.
     class SelectNearestCentroidForPoint extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {

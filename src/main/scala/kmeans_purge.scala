@@ -15,8 +15,9 @@ object kmeans_purge {
 
     // Settings
     val inputUrl = "file:/Users/jonas/tmp_kmeans.txt"
-    val k = 2
+    val k = 4
     val iterations = 4
+    val epsilon = 0.01
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -52,6 +53,7 @@ object kmeans_purge {
         for (centroid <- centroids){
           val distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5)
           if (distance < minDistance){
+            minDistance = distance
             closest_centroid = centroid.cluster
           }
         }
@@ -63,41 +65,28 @@ object kmeans_purge {
       }
     }
 
+    val centroid_list = initialCentroids.collect()
 
-    val centroids = initialCentroids.collect()
-    println("centroids:")
-    println(centroids)
-
-    val points2 = planBuilder
+    val points = planBuilder
       .readTextFile(inputUrl).withName("Read file")
       .map { line =>
         val fields = line.split(",")
         TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 1)
       }.withName("Create points")
 
-    //    val points2_output = points2.collect()
-    //
-    //    println("points2_output:")
-    //    println(points2_output)
-
-    val points3 = points2
+    val points_w_cl_centroid = points
       .mapJava(new SelectNearestCentroidForPoint)
       .withBroadcast(initialCentroids, "centroids").withName("Find nearest centroid")
 
-    val newCentroids = points3
+    val new_centroids = points_w_cl_centroid
       .reduceByKey(_.cluster, _.add_points(_)).withName("Add up points")
       .withCardinalityEstimator(k)
       .map(_.average).withName("Average points").collect()
 
-    // compare new to old centroids
-
-    println(newCentroids)
-    println(centroids)
-
     var filtered_centroids = List[TaggedPointCounter]()
     var filtered_points = List[TaggedPointCounter]()
 
-    var points_list = planBuilder
+    var points_list_to_be_filtered = planBuilder // TODO JRK: This is stupid. Should not be done twice.
       .readTextFile(inputUrl).withName("Read file")
       .map { line =>
         val fields = line.split(",")
@@ -107,40 +96,37 @@ object kmeans_purge {
       .withBroadcast(initialCentroids, "centroids").withName("Find nearest centroid")
       .collect()
 
-    for (new_centroid <- newCentroids){
-      for (old_centroid <- centroids){
+    println(new_centroids)
+    println(centroid_list)
+
+    for (new_centroid <- new_centroids){
+      for (old_centroid <- centroid_list){
         if (new_centroid.cluster == old_centroid.cluster){
           val distance = Math.pow(Math.pow(old_centroid.x - new_centroid.x, 2) + Math.pow(old_centroid.y - new_centroid.y, 2), 0.5)
+          println("## distance")
           println(distance)
-          if (distance > 0.1) {
+          if (distance > epsilon) {
             filtered_centroids ::= new_centroid
-            points_list = points_list.filter(_.cluster == old_centroid.cluster)
+            points_list_to_be_filtered = points_list_to_be_filtered.filter(_.cluster == old_centroid.cluster)
           }
         }
       }
     }
 
-    println("filtered_centroids")
+    println("## filtered_centroids")
     println(filtered_centroids)
-    println("points_list")
-    println(points_list)
+    println("## points_list_to_be_filtered")
+    println(points_list_to_be_filtered)
 
-    val filtered_centroids_quanta = planBuilder.loadCollection(filtered_centroids)
+    val filtered_centroids_quanta_for_second_iteration = planBuilder.loadCollection(filtered_centroids)
+    val filtered_points_quanta_for_second_iteration = planBuilder.loadCollection(points_list_to_be_filtered)
 
-    println(filtered_centroids_quanta)
-
-    val pointsagain = planBuilder
-      .readTextFile(inputUrl).withName("Read file")
-      .map { line =>
-        val fields = line.split(",")
-        TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 1)
-      }.withName("Create points")
-
-    val points_second_iteration = pointsagain
+    val points_second_iteration = filtered_points_quanta_for_second_iteration
       .mapJava(new SelectNearestCentroidForPoint)
-      .withBroadcast(filtered_centroids_quanta, "centroids").withName("Find nearest centroid")
+      .withBroadcast(filtered_centroids_quanta_for_second_iteration, "centroids").withName("Find nearest centroid")
       .collect()
 
+    println("## points_second_iteration")
     println(points_second_iteration)
 
   }

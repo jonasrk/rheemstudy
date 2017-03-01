@@ -15,8 +15,8 @@ object kmeans_purge {
 
     // Settings
     val inputUrl = "file:/Users/jonas/tmp_kmeans.txt"
-    val k = 5
-    val iterations = 100
+    val k = 2
+    val iterations = 4
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -27,7 +27,7 @@ object kmeans_purge {
       .withUdfJarsOf(this.getClass)
 
     case class Point(x: Double, y: Double)
-    case class TaggedPoint(x: Double, y: Double, cluster: Int)
+    case class TaggedPoint(x: Double, y: Double, old_x: Double, old_y: Double, cluster: Int)
     case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long) {
       def add_points(that: TaggedPointCounter) = TaggedPointCounter(this.x + that.x, this.y + that.y, this.cluster, this.count + that.count)
       def average = TaggedPointCounter(x / count, y / count, cluster, 0)
@@ -67,24 +67,120 @@ object kmeans_purge {
             nearestCentroidId = centroid.cluster
           }
         }
-        new TaggedPointCounter(point.x, point.y, nearestCentroidId, 1)
+        if (nearestCentroidId != -1){
+          println("### Not with a removed centroid")
+          return new TaggedPointCounter(point.x, point.y, -1, 1)
+        } else {
+          println("### With a removed centroid")
+          return new TaggedPointCounter(point.x, point.y, -1, 1)
+        }
+      }
+    }
+
+    // Declare UDF to eliminate centroids that did not change much.
+    class EliminateCentroids extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
+
+      /** Keeps the broadcasted centroids. */
+      var centroids: Iterable[TaggedPointCounter] = _
+
+      override def open(executionCtx: ExecutionContext) = {
+        centroids = executionCtx.getBroadcast[TaggedPointCounter]("centroids")
+      }
+
+      override def apply(newCentroid: TaggedPointCounter): TaggedPointCounter = {
+        var change_too_small = false
+        for (centroid <- centroids) {
+          val distance = Math.pow(Math.pow(newCentroid.x - centroid.x, 2) + Math.pow(newCentroid.y - centroid.y, 2), 0.5)
+          if (distance < 0.00001) {
+            change_too_small = true
+          }
+        }
+        if (change_too_small == true) {
+          println("### too small!")
+          return new TaggedPointCounter(newCentroid.x, newCentroid.y, -1, 1)
+        } else {
+          println("### NOT too small!")
+          return new TaggedPointCounter(newCentroid.x, newCentroid.y, newCentroid.cluster, 0)
+        }
+
       }
     }
 
     // Do the k-means loop.
-    val finalCentroids = initialCentroids.repeat(iterations, { currentCentroids =>
-      points
-        .filter(_.x >= 0.5)
-        .mapJava(new SelectNearestCentroid)
-        .withBroadcast(currentCentroids, "centroids").withName("Find nearest centroid")
-        .reduceByKey(_.cluster, _.add_points(_)).withName("Add up points")
-        .withCardinalityEstimator(k)
-        .map(_.average).withName("Average points")
-    }).withName("Loop")
+    //    val finalCentroids = initialCentroids.repeat(iterations, { currentCentroids =>
+    //      points
+    //        .mapJava(new SelectNearestCentroid)
+    //        .withBroadcast(currentCentroids, "centroids").withName("Find nearest centroid")
+    //        .reduceByKey(_.cluster, _.add_points(_)).withName("Add up points")
+    //        .withCardinalityEstimator(k)
+    //        .map(_.average).withName("Average points")
+    //        .mapJava(new EliminateCentroids)
+    //        .withBroadcast(currentCentroids, "centroids").withName("Find nearest centroid")
+    //    }).withName("Loop")
+    //
+    //      // Collect the results.
+    //      .collect()
+    //
+    //    println(finalCentroids)
 
-      // Collect the results.
-      .collect()
 
-    println(finalCentroids)
+    // Declare UDF to select centroid for each data point.
+    class SelectNearestCentroidForPoint extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
+
+      override def open(executionCtx: ExecutionContext) = {
+      }
+
+      override def apply(point: TaggedPointCounter): TaggedPointCounter = {
+        if (point.x < 0.5){
+          return point
+        } else {
+          return null
+        }
+
+        //        var minDistance = Double.PositiveInfinity
+        //        var nearestCentroidId = -1
+        //        for (centroid <- centroids) {
+        //          val distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5)
+        //          if (distance < minDistance) {
+        //            minDistance = distance
+        //            nearestCentroidId = centroid.cluster
+        //          }
+        //        }
+        //        if (nearestCentroidId != -1){
+        //          println("### Not with a removed centroid")
+        //          return new TaggedPointCounter(point.x, point.y, -1, 1)
+        //        } else {
+        //          println("### With a removed centroid")
+        //          return new TaggedPointCounter(point.x, point.y, -1, 1)
+        //        }
+      }
+    }
+
+
+    val centroids = initialCentroids.collect()
+    println("centroids:")
+    println(centroids)
+
+    val points2 = planBuilder
+      .readTextFile(inputUrl).withName("Read file")
+      .map { line =>
+        val fields = line.split(",")
+        TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 1)
+      }.withName("Create points")
+
+    //    val points2_output = points2.collect()
+    //
+    //    println("points2_output:")
+    //    println(points2_output)
+
+    val points3 = points2
+      .mapJava(new SelectNearestCentroidForPoint)
+
+    val points3_output = points3.collect()
+
+    println("points3_output:")
+    println(points3_output)
+
+
   }
 }

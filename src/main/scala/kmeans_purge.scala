@@ -91,10 +91,8 @@ object kmeans_purge {
     println(initial_centroids_list)
 
     val output = initial_centroids_map
-      .repeat(iterations, {foo =>
-        initial_centroids_map
+      .repeat(iterations, {pointsx => pointsx
             .map(point => TaggedPointCounter(point.x * 2, point.y, point.cluster, 0))
-            .withBroadcast(foo, "centroids").withName("Do nothing")
       }).collect()
 
     println("output after:")

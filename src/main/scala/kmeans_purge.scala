@@ -100,15 +100,19 @@ object kmeans_purge {
             TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 1)
           }
 
-    println(initial_points.toString)
+    println(initial_points)
+    val count = initial_points.count.collect()
+    println(count.head)
+    println(initial_points.count)
 
     val values = initial_points.withName("Load input values")
-      .doWhile[TaggedPointCounter](point => !point.isEmpty, {
+      .doWhile[TaggedPointCounter](points => points.isEmpty, {
       start =>
-        (start, start)
+        val foo = start.filter(_ != 42)
+        (start, foo)
     }).withName("While <= 100")
 
-    println(values)
+    println(values.collect())
 
 
 

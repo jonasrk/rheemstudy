@@ -93,15 +93,20 @@ object kmeans_purge {
 
     // Build and execute a word count RheemPlan.
 
-    val values = planBuilder
-      .loadCollection(inputValues).withName("Load input values")
-      .doWhile[Int](vals => vals.max > 500, {
+    val initial_points = planBuilder
+          .readTextFile(inputUrl).withName("Read file")
+          .map { line =>
+            val fields = line.split(",")
+            TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 1)
+          }
+
+    println(initial_points.toString)
+
+    val values = initial_points.withName("Load input values")
+      .doWhile[TaggedPointCounter](point => !point.isEmpty, {
       start =>
-        val sum = start.map(numb => numb + 1)
-        val foo = start.map(numb => numb + 1000)
-        (start.union(sum).withName("Old+new"), foo)
+        (start, start)
     }).withName("While <= 100")
-      .collect().toSet
 
     println(values)
 

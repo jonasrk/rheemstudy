@@ -4,11 +4,15 @@
 import org.qcri.rheem.api._
 import org.qcri.rheem.core.api.{Configuration, RheemContext}
 import org.qcri.rheem.core.function.FunctionDescriptor.ExtendedSerializableFunction
-import org.qcri.rheem.core.function.ExecutionContext
+import org.qcri.rheem.core.function.{ExecutionContext, FunctionDescriptor}
+import org.qcri.rheem.core.util.RheemCollections
 import org.qcri.rheem.java.Java
 import org.qcri.rheem.spark.Spark
+
 import scala.util.Random
 import scala.collection.JavaConversions._
+
+import java.util
 
 object kmeans_purge {
   def main(args: Array[String]) {
@@ -80,23 +84,59 @@ object kmeans_purge {
       }
     }
 
-    val initial_centroids_list = initialCentroids.collect()
 
-    val initial_centroids_map = initialCentroids
-      .map{ point => point}
 
-    println("initialCentroids before:")
-    println(initialCentroids)
-    println("initial_centroids_list before:")
-    println(initial_centroids_list)
+    // Generate some test data.
+    val inputValues = Array(1, 2)
+    // Generate some test data.
+    var inputValues2 = planBuilder.loadCollection(Array(3000, 4000))
 
-    val output = initial_centroids_map
-      .repeat(iterations, {pointsx => pointsx
-            .map(point => TaggedPointCounter(point.x * 2, point.y, point.cluster, 0))
-      }).collect()
+    // Build and execute a word count RheemPlan.
 
-    println("output after:")
-    println(output)
+    val values = planBuilder
+      .loadCollection(inputValues).withName("Load input values")
+      .doWhile[Int](vals => vals.max > 500, {
+      start =>
+        val sum = start.map(numb => numb + 1)
+        val foo = start.map(numb => numb + 1000)
+        (start.union(sum).withName("Old+new"), foo)
+    }).withName("While <= 100")
+      .collect().toSet
+
+    println(values)
+
+
+
+
+
+//    val initial_centroids_list = initialCentroids.collect()
+//
+//    val initial_centroids_map = initialCentroids
+//      .map{ point => point}
+//
+//    println("initialCentroids before:")
+//    println(initialCentroids)
+//    println("initial_centroids_list before:")
+//    println(initial_centroids_list)
+//
+//    val condition = planBuilder.loadCollection(Iterable(1, 2, 3))
+//
+//    val output = initial_centroids_map
+//      .doWhile[Int](condition => condition.max > 100, {pointsx =>
+//      val res = pointsx
+//        .map(point => TaggedPointCounter(point.x * 2, point.y, point.cluster, 0))
+//      val condition_out = condition.map(numb => 2 * numb)
+//      (condition_out, condition_out)
+//
+//      })
+//
+////    val output = initial_centroids_map
+////      .repeat(iterations, {pointsx => pointsx
+////            .map(point => TaggedPointCounter(point.x * 2, point.y, point.cluster, 0))
+////      }).collect()
+//
+//    println("output after:")
+//    println(output.collect())
 
 
 

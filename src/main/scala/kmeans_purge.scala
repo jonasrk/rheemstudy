@@ -86,21 +86,16 @@ object kmeans_purge {
 
 
 
-    // Generate some test data.
-    val inputValues = Array(1, 2, 3, 4)
-    // Generate some test data.
 
 
 
-    val output = planBuilder.loadCollection(inputValues)
-      .doWhile[Int](condition => condition.size > 2, {pointsx =>
-      val res = pointsx.map(numb => numb + 23)
-      val condition_out = pointsx.map(numb => 2000 + numb)
-      (res.sample(res.count - 1), condition_out)
-    })
 
 
-    println(output.collect())
+
+
+
+
+
 
 
 

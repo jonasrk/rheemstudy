@@ -103,6 +103,13 @@ public class loopoperator {
         // Create initial centroids.
         Collection<TaggedPointCounter> centroids = generate_random_centroids(k);
 
+        System.out.println("initial centroids");
+        for (TaggedPointCounter el:
+                centroids) {
+            System.out.println(el.x);
+            System.out.println(el.y);
+        }
+
         // Start building the RheemPlan.
         final DataQuantaBuilder<?, TaggedPointCounter> points = planBuilder
                 .readTextFile(inputUrl).withName("Load file")
@@ -112,8 +119,9 @@ public class loopoperator {
 
         Collection<TaggedPointCounter> points_collection = points.collect();
 
-        final int numIterations = 1;
+        final int numIterations = 2;
         final int[] values = {0, 1, 2};
+
 
 
         CollectionSource<TaggedPointCounter> source = new CollectionSource<>(centroids, TaggedPointCounter.class);
@@ -122,8 +130,8 @@ public class loopoperator {
         CollectionSource<Integer> convergenceSource = new CollectionSource<>(RheemArrays.asList(0), Integer.class);
         convergenceSource.setName("convergenceSource");
 
-
-        LoopOperator<TaggedPointCounter, Integer> loopOperator = new LoopOperator<>(DataSetType.createDefault(TaggedPointCounter.class),
+        LoopOperator<TaggedPointCounter, Integer> loopOperator = new LoopOperator<>(
+                DataSetType.createDefault(TaggedPointCounter.class),
                 DataSetType.createDefault(Integer.class),
                 (PredicateDescriptor.SerializablePredicate<Collection<Integer>>) collection ->
                         collection.iterator().next() >= numIterations,
@@ -134,7 +142,7 @@ public class loopoperator {
 
         FlatMapOperator<TaggedPointCounter, TaggedPointCounter> stepOperator;
         stepOperator = new FlatMapOperator<>(
-                val -> Arrays.asList(val),
+                val -> Arrays.asList(new TaggedPointCounter(val.x * 2, val.y - 1, 0, 0)),
                 TaggedPointCounter.class,
                 TaggedPointCounter.class
         );
@@ -147,14 +155,25 @@ public class loopoperator {
         loopOperator.beginIteration(stepOperator, counter);
         loopOperator.endIteration(stepOperator, counter);
 
-        LocalCallbackSink<TaggedPointCounter> sink = LocalCallbackSink.createCollectingSink(points_collection, TaggedPointCounter.class);
+        Collection<TaggedPointCounter> output = new ArrayList<>();
+
+        LocalCallbackSink<TaggedPointCounter> sink = LocalCallbackSink.createCollectingSink(output, TaggedPointCounter.class);
         sink.setName("sink");
         loopOperator.outputConnectTo(sink);
+
+
+
 
 
         RheemPlan rheemPlan = new RheemPlan(sink);
 
         rheemContext.execute(rheemPlan);
-        System.out.println(points_collection);
+        System.out.println("output");
+        for (TaggedPointCounter el:
+                output) {
+            System.out.println(el.x);
+            System.out.println(el.y);
+        }
+
     }
 }

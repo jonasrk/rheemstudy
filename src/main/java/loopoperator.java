@@ -14,6 +14,7 @@ import org.qcri.rheem.core.types.DataSetType;
 import org.qcri.rheem.core.util.RheemArrays;
 import org.qcri.rheem.spark.Spark;
 import org.qcri.rheem.java.Java;
+import org.stringtemplate.v4.ST;
 
 import java.util.*;
 
@@ -88,6 +89,13 @@ public class loopoperator {
         return list;
     }
 
+
+    public static TaggedPointCounter parse_input(String line){
+        String s[] = line.split(",");
+        return new TaggedPointCounter(Double.parseDouble(s[0]), Double.parseDouble(s[1]), 0, 0);
+
+    }
+
     public static void main(String[] args){
 
         // Settings
@@ -113,59 +121,77 @@ public class loopoperator {
         System.out.println("foo");
         System.out.println(ct.size());
 
-        final DataQuantaBuilder<?, TaggedPointCounter> weightsBuilder = planBuilder
+        final DataQuantaBuilder<?, TaggedPointCounter> initial_centroids = planBuilder
                 .loadCollection(ct)
                 .withName("Load random centroids");
 
+        // Start building the RheemPlan.
+        Collection<TaggedPointCounter> points = planBuilder
+                .readTextFile(inputUrl).withName("Load file")
+                .flatMap(line -> Arrays.asList(new TaggedPointCounter(
+                        Double.parseDouble(line.split(",")[0]),
+                        Double.parseDouble(line.split(",")[1]),
+                        0,
+                        0)))
+                .collect();
 
-    final List<Integer> collectorT = new LinkedList<>();
+        System.out.println("points:");
+        System.out.println(points);
+        for (TaggedPointCounter point :
+                points) {
+            System.out.println(point.x);
+        }
 
-    final int numIterations = 1;
-    Collection<Integer> collector = collectorT;
-    final int[] values = {0, 1, 2};
 
 
-    CollectionSource<Integer> source = new CollectionSource<>(RheemArrays.asList(values), Integer.class);
+        final List<Integer> collectorT = new LinkedList<>();
+
+        final int numIterations = 1;
+        Collection<Integer> collector = collectorT;
+        final int[] values = {0, 1, 2};
+
+
+        CollectionSource<Integer> source = new CollectionSource<>(RheemArrays.asList(values), Integer.class);
         source.setName("source");
 
-    CollectionSource<Integer> convergenceSource = new CollectionSource<>(RheemArrays.asList(0), Integer.class);
+        CollectionSource<Integer> convergenceSource = new CollectionSource<>(RheemArrays.asList(0), Integer.class);
         convergenceSource.setName("convergenceSource");
 
 
-    LoopOperator<Integer, Integer> loopOperator = new LoopOperator<>(DataSetType.createDefault(Integer.class),
-            DataSetType.createDefault(Integer.class),
-            (PredicateDescriptor.SerializablePredicate<Collection<Integer>>) collection ->
-                    collection.iterator().next() >= numIterations,
-            numIterations
-    );
+        LoopOperator<Integer, Integer> loopOperator = new LoopOperator<>(DataSetType.createDefault(Integer.class),
+                DataSetType.createDefault(Integer.class),
+                (PredicateDescriptor.SerializablePredicate<Collection<Integer>>) collection ->
+                        collection.iterator().next() >= numIterations,
+                numIterations
+        );
         loopOperator.setName("loop");
         loopOperator.initialize(source, convergenceSource);
 
-    FlatMapOperator<Integer, Integer> stepOperator = new FlatMapOperator<>(
-            val -> Arrays.asList(2 * val, 2 * val + 1000),
-            Integer.class,
-            Integer.class
-    );
+        FlatMapOperator<Integer, Integer> stepOperator = new FlatMapOperator<>(
+                val -> Arrays.asList(2 * val, 2 * val + 1000),
+                Integer.class,
+                Integer.class
+        );
         stepOperator.setName("step");
 
-    MapOperator<Integer, Integer> counter = new MapOperator<>(
-            new TransformationDescriptor<>(n -> n + 1, Integer.class, Integer.class)
-    );
+        MapOperator<Integer, Integer> counter = new MapOperator<>(
+                new TransformationDescriptor<>(n -> n + 1, Integer.class, Integer.class)
+        );
         counter.setName("counter");
         loopOperator.beginIteration(stepOperator, counter);
         loopOperator.endIteration(stepOperator, counter);
 
-    LocalCallbackSink<Integer> sink = LocalCallbackSink.createCollectingSink(collector, Integer.class);
+        LocalCallbackSink<Integer> sink = LocalCallbackSink.createCollectingSink(collector, Integer.class);
         sink.setName("sink");
         loopOperator.outputConnectTo(sink);
 
 
-    RheemPlan rheemPlan = new RheemPlan(sink);
+        RheemPlan rheemPlan = new RheemPlan(sink);
 
-    // Instantiate Rheem and activate the Java backend.
+        // Instantiate Rheem and activate the Java backend.
 //    RheemContext rheemContext = new RheemContext().with(Java.basicPlugin());
 
         rheemContext.execute(rheemPlan);
         System.out.println(collector);
-}
+    }
 }

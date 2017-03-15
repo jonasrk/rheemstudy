@@ -13,17 +13,16 @@ import org.qcri.rheem.core.util.RheemArrays;
 import org.qcri.rheem.java.Java;
 import org.qcri.rheem.spark.Spark;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Random;
+import java.util.*;
+
+import static java.util.Collections.*;
 
 class TaggedPointCounter{
 
-    public double x;
-    public double y;
-    public int cluster;
-    public long count;
+    double x;
+    double y;
+    int cluster;
+    private long count;
 
     public TaggedPointCounter(double x, double y, int cluster, long count)
     {
@@ -73,7 +72,7 @@ class SelectNearestCentroidForPoint implements FunctionDescriptor.ExtendedSerial
 
 public class loopoperator {
 
-    public static Collection<TaggedPointCounter> generate_random_centroids(int n_points){
+    private static Collection<TaggedPointCounter> generate_random_centroids(int n_points){
         Random rand = new Random();
         Collection<TaggedPointCounter> list = new ArrayList<>();
         for (int i = 0; i < n_points; i++) {
@@ -107,14 +106,13 @@ public class loopoperator {
         // Start building the RheemPlan.
         final DataQuantaBuilder<?, TaggedPointCounter> points = planBuilder
                 .readTextFile(inputUrl).withName("Load file")
-                .flatMap(line -> Arrays.asList(new TaggedPointCounter(
+                .flatMap(line -> singletonList(new TaggedPointCounter(
                         Double.parseDouble(line.split(",")[0]),
-                        Double.parseDouble(line.split(",")[1]),0,0)));
+                        Double.parseDouble(line.split(",")[1]), 0, 0)));
 
         Collection<TaggedPointCounter> points_collection = points.collect();
 
         final int numIterations = 1;
-        Collection<TaggedPointCounter> collector = points_collection;
         final int[] values = {0, 1, 2};
 
 
@@ -135,7 +133,7 @@ public class loopoperator {
         loopOperator.initialize(source, convergenceSource);
 
         FlatMapOperator<TaggedPointCounter, TaggedPointCounter> stepOperator;
-        stepOperator = new FlatMapOperator<TaggedPointCounter, TaggedPointCounter>(
+        stepOperator = new FlatMapOperator<>(
                 val -> Arrays.asList(val),
                 TaggedPointCounter.class,
                 TaggedPointCounter.class
@@ -149,7 +147,7 @@ public class loopoperator {
         loopOperator.beginIteration(stepOperator, counter);
         loopOperator.endIteration(stepOperator, counter);
 
-        LocalCallbackSink<TaggedPointCounter> sink = LocalCallbackSink.createCollectingSink(collector, TaggedPointCounter.class);
+        LocalCallbackSink<TaggedPointCounter> sink = LocalCallbackSink.createCollectingSink(points_collection, TaggedPointCounter.class);
         sink.setName("sink");
         loopOperator.outputConnectTo(sink);
 
@@ -157,6 +155,6 @@ public class loopoperator {
         RheemPlan rheemPlan = new RheemPlan(sink);
 
         rheemContext.execute(rheemPlan);
-        System.out.println(collector);
+        System.out.println(points_collection);
     }
 }

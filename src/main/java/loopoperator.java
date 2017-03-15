@@ -3,25 +3,20 @@
  */
 
 import org.qcri.rheem.api.*;
-import org.qcri.rheem.basic.data.Tuple2;
+import org.qcri.rheem.basic.operators.*;
 import org.qcri.rheem.core.api.Configuration;
 import org.qcri.rheem.core.api.RheemContext;
-import org.qcri.rheem.java.Java;
-import org.qcri.rheem.basic.operators.*;
 import org.qcri.rheem.core.function.*;
 import org.qcri.rheem.core.plan.rheemplan.RheemPlan;
 import org.qcri.rheem.core.types.DataSetType;
 import org.qcri.rheem.core.util.RheemArrays;
-import org.qcri.rheem.spark.Spark;
 import org.qcri.rheem.java.Java;
-import org.stringtemplate.v4.ST;
+import org.qcri.rheem.spark.Spark;
 
-import java.util.*;
-
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-
-import static com.sun.org.apache.xalan.internal.xsltc.compiler.util.Type.Int;
+import java.util.Random;
 
 class TaggedPointCounter{
 
@@ -88,13 +83,6 @@ public class loopoperator {
         return list;
     }
 
-
-    public static TaggedPointCounter parse_input(String line){
-        String s[] = line.split(",");
-        return new TaggedPointCounter(Double.parseDouble(s[0]), Double.parseDouble(s[1]), 0, 0);
-
-    }
-
     public static void main(String[] args){
 
         // Settings
@@ -114,33 +102,23 @@ public class loopoperator {
 
 
         // Create initial centroids.
-
-        Collection<TaggedPointCounter> ct = generate_random_centroids(k);
-
-        final DataQuantaBuilder<?, TaggedPointCounter> initial_centroids = planBuilder
-                .loadCollection(ct)
-                .withName("Load random centroids");
+        Collection<TaggedPointCounter> centroids = generate_random_centroids(k);
 
         // Start building the RheemPlan.
         final DataQuantaBuilder<?, TaggedPointCounter> points = planBuilder
                 .readTextFile(inputUrl).withName("Load file")
                 .flatMap(line -> Arrays.asList(new TaggedPointCounter(
                         Double.parseDouble(line.split(",")[0]),
-                        Double.parseDouble(line.split(",")[1]),
-                        0,
-                        0)));
+                        Double.parseDouble(line.split(",")[1]),0,0)));
 
         Collection<TaggedPointCounter> points_collection = points.collect();
-
-
-        final List<Integer> collectorT = new LinkedList<>();
 
         final int numIterations = 1;
         Collection<TaggedPointCounter> collector = points_collection;
         final int[] values = {0, 1, 2};
 
 
-        CollectionSource<TaggedPointCounter> source = new CollectionSource<TaggedPointCounter>(points_collection, TaggedPointCounter.class);
+        CollectionSource<TaggedPointCounter> source = new CollectionSource<>(centroids, TaggedPointCounter.class);
         source.setName("source");
 
         CollectionSource<Integer> convergenceSource = new CollectionSource<>(RheemArrays.asList(0), Integer.class);

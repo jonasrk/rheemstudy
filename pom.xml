@@ -8,6 +8,10 @@
     <artifactId>rheemstudy</artifactId>
     <version>1.0-SNAPSHOT</version>
 
+    <properties>
+        <scala.version>2.11.8</scala.version>
+    </properties>
+
 
     <!-- Add a Scala compiler for our app. -->
     <build>

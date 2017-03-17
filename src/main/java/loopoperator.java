@@ -13,6 +13,8 @@ import org.qcri.rheem.core.util.RheemArrays;
 import org.qcri.rheem.java.Java;
 import org.qcri.rheem.spark.Spark;
 
+import javax.xml.crypto.Data;
+import java.security.Key;
 import java.util.*;
 
 import static java.util.Collections.*;
@@ -38,6 +40,21 @@ class TaggedPointCounter{
     public TaggedPointCounter average(){
         return new TaggedPointCounter(this.x / this.count, this.y / this.count, this.cluster, 0);
     }
+
+}
+
+class returnCluster implements FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, Integer>{
+
+    @Override
+    public Integer apply(TaggedPointCounter point) {
+        return point.cluster;
+    }
+
+    @Override
+    public void open(ExecutionContext executionCtx) {
+
+    }
+
 }
 
 // Declare UDF to select centroid for each data point.
@@ -77,7 +94,7 @@ public class loopoperator {
         Collection<TaggedPointCounter> list = new ArrayList<>();
         for (int i = 0; i < n_points; i++) {
 
-            list.add(new TaggedPointCounter(rand.nextDouble(), rand.nextDouble(), i, 0));
+            list.add(new TaggedPointCounter(rand.nextDouble(), rand.nextDouble(), i, 10));
         }
         return list;
     }
@@ -117,11 +134,8 @@ public class loopoperator {
                         Double.parseDouble(line.split(",")[0]),
                         Double.parseDouble(line.split(",")[1]), 0, 0)));
 
-        Collection<TaggedPointCounter> points_collection = points.collect();
-
-        final int numIterations = 2;
+        final int numIterations = 1;
         final int[] values = {0, 1, 2};
-
 
 
         CollectionSource<TaggedPointCounter> source = new CollectionSource<>(centroids, TaggedPointCounter.class);
@@ -140,12 +154,8 @@ public class loopoperator {
         loopOperator.setName("loop");
         loopOperator.initialize(source, convergenceSource);
 
-        FlatMapOperator<TaggedPointCounter, TaggedPointCounter> stepOperator;
-        stepOperator = new FlatMapOperator<>(
-                val -> Arrays.asList(new TaggedPointCounter(val.x * 2, val.y - 1, 0, 0)),
-                TaggedPointCounter.class,
-                TaggedPointCounter.class
-        );
+        CountOperator<TaggedPointCounter> stepOperator;
+        stepOperator = new CountOperator<TaggedPointCounter>(TaggedPointCounter.class);
         stepOperator.setName("step");
 
         MapOperator<Integer, Integer> counter = new MapOperator<>(

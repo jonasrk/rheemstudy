@@ -13,8 +13,6 @@ import org.qcri.rheem.core.util.RheemArrays;
 import org.qcri.rheem.java.Java;
 import org.qcri.rheem.spark.Spark;
 
-import javax.xml.crypto.Data;
-import java.security.Key;
 import java.util.*;
 
 import static java.util.Collections.*;
@@ -40,21 +38,6 @@ class TaggedPointCounter{
     public TaggedPointCounter average(){
         return new TaggedPointCounter(this.x / this.count, this.y / this.count, this.cluster, 0);
     }
-
-}
-
-class returnCluster implements FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, Integer>{
-
-    @Override
-    public Integer apply(TaggedPointCounter point) {
-        return point.cluster;
-    }
-
-    @Override
-    public void open(ExecutionContext executionCtx) {
-
-    }
-
 }
 
 // Declare UDF to select centroid for each data point.
@@ -94,7 +77,7 @@ public class loopoperator {
         Collection<TaggedPointCounter> list = new ArrayList<>();
         for (int i = 0; i < n_points; i++) {
 
-            list.add(new TaggedPointCounter(rand.nextDouble(), rand.nextDouble(), i, 10));
+            list.add(new TaggedPointCounter(rand.nextDouble(), rand.nextDouble(), i, 0));
         }
         return list;
     }
@@ -134,8 +117,11 @@ public class loopoperator {
                         Double.parseDouble(line.split(",")[0]),
                         Double.parseDouble(line.split(",")[1]), 0, 0)));
 
+        Collection<TaggedPointCounter> points_collection = points.collect();
+
         final int numIterations = 1;
         final int[] values = {0, 1, 2};
+
 
 
         CollectionSource<TaggedPointCounter> source = new CollectionSource<>(centroids, TaggedPointCounter.class);
@@ -154,16 +140,30 @@ public class loopoperator {
         loopOperator.setName("loop");
         loopOperator.initialize(source, convergenceSource);
 
-        CountOperator<TaggedPointCounter> stepOperator;
-        stepOperator = new CountOperator<TaggedPointCounter>(TaggedPointCounter.class);
+        MapOperator<TaggedPointCounter, TaggedPointCounter> stepOperator;
+        stepOperator = new MapOperator<>(
+                val -> new TaggedPointCounter(val.x * 2, val.y - 1, 0, 0),
+                TaggedPointCounter.class,
+                TaggedPointCounter.class
+        );
         stepOperator.setName("step");
+
+        MapOperator<TaggedPointCounter, TaggedPointCounter> sameOperator;
+        sameOperator = new MapOperator<>(
+                val -> new TaggedPointCounter(val.x * 10, val.y - 10, 0, 0),
+                TaggedPointCounter.class,
+                TaggedPointCounter.class
+        );
+        stepOperator.setName("step");
+
+        stepOperator.connectTo(0, sameOperator, 0);
 
         MapOperator<Integer, Integer> counter = new MapOperator<>(
                 new TransformationDescriptor<>(n -> n + 1, Integer.class, Integer.class)
         );
         counter.setName("counter");
         loopOperator.beginIteration(stepOperator, counter);
-        loopOperator.endIteration(stepOperator, counter);
+        loopOperator.endIteration(sameOperator, counter);
 
         Collection<TaggedPointCounter> output = new ArrayList<>();
 

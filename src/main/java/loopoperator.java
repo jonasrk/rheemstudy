@@ -87,7 +87,7 @@ class averageSummedUpPoints implements FunctionDescriptor.ExtendedSerializableFu
 
     @Override
     public void open(ExecutionContext executionCtx) {
-     }
+    }
 
 }
 
@@ -134,9 +134,15 @@ public class loopoperator {
         // Create initial centroids.
         Collection<TaggedPointCounter> centroids = generate_random_centroids(k);
 
-        System.out.println("initial centroids");
+        System.out.println("initial points");
         for (TaggedPointCounter el:
                 points_collection) {
+            System.out.println("x: " + el.x + " y: " + el.y + " cluster: " + el.cluster + " count: " + el.count);
+        }
+
+        System.out.println("initial centroids");
+        for (TaggedPointCounter el:
+                centroids) {
             System.out.println("x: " + el.x + " y: " + el.y + " cluster: " + el.cluster + " count: " + el.count);
         }
 
@@ -169,28 +175,53 @@ public class loopoperator {
         );
         stepOperator.setName("step");
 
-        MapDataQuantaBuilder<TaggedPointCounter, TaggedPointCounter> points_plan = points
-                .map(new SelectNearestCentroidForPoint());
-//                .reduceByKey(new FunctionDescriptor.SerializableFunction<TaggedPointCounter, Integer>() {
-//                                 @Override
-//                                 public Integer apply(TaggedPointCounter point) {
-//                                     return point.cluster;
-//                                 }
-//
-//                                 @Override
-//                                 public void open(ExecutionContext executionCtx) {
-//                                 }
-//                             }, (FunctionDescriptor.SerializableBinaryOperator<TaggedPointCounter>) (taggedPointCounter, taggedPointCounter2) -> taggedPointCounter.add_points(taggedPointCounter2)
-//                )
-//                .map(new averageSummedUpPoints());
-
 
         MapPartitionsOperator<TaggedPointCounter, TaggedPointCounter> mappart = new MapPartitionsOperator<TaggedPointCounter, TaggedPointCounter>(
                 vals -> points_collection,
                 TaggedPointCounter.class,
                 TaggedPointCounter.class
         );
-        stepOperator.setName("step");
+
+        MapOperator<TaggedPointCounter, TaggedPointCounter> nearestOperator;
+        nearestOperator = new MapOperator<>(
+                new TransformationDescriptor<>(
+                        new FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, TaggedPointCounter>(){
+
+                            /**
+                             * Keeps the broadcasted centroids.
+                             */
+                            Iterable<TaggedPointCounter> centroids;
+
+                            @Override
+                            public TaggedPointCounter apply(TaggedPointCounter point) {
+                                int closest_centroid = -1;
+                                double minDistance = Double.MAX_VALUE;
+                                for (TaggedPointCounter centroid : centroids) {
+                                    double distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5);
+                                    System.out.println(point.x + " x " + centroid.x + " x " + point.y + " x " + centroid.y);
+                                    System.out.println("distance: " + distance);
+                                    if (distance < minDistance) {
+                                        minDistance = distance;
+                                        closest_centroid = centroid.cluster;
+                                    }
+                                }
+
+                                return new TaggedPointCounter(point.x, point.y, closest_centroid, 1);
+                            }
+
+                            @Override
+                            public void open(ExecutionContext executionCtx) {
+                                centroids = executionCtx.getBroadcast("centroids");
+                            }
+
+                        },
+                        TaggedPointCounter.class,
+                        TaggedPointCounter.class
+                )
+        );
+
+
+
 
         ReduceByOperator<TaggedPointCounter, Integer> reduce_and_cluster_and_add = new ReduceByOperator<>(
                 new TransformationDescriptor<>(
@@ -213,7 +244,8 @@ public class loopoperator {
                 )
         );
 
-//        sameOperator.connectTo(0, reduce_and_cluster_and_add, 0);
+        mappart.connectTo(0, nearestOperator, 0);
+        nearestOperator.connectTo(0, reduce_and_cluster_and_add, 0);
 
         MapOperator<TaggedPointCounter, TaggedPointCounter> counter = new MapOperator<>(
                 val -> new TaggedPointCounter(0,0,0,0),
@@ -222,8 +254,8 @@ public class loopoperator {
         );
         counter.setName("counter");
         loopOperator.beginIteration(mappart, counter);
-//        loopOperator.broadcastTo("convOut", sameOperator, "centroids");
-        loopOperator.endIteration(mappart, counter);
+        loopOperator.broadcastTo("iterOut", nearestOperator, "centroids");
+        loopOperator.endIteration(reduce_and_cluster_and_add, counter);
 
         Collection<TaggedPointCounter> output = new ArrayList<>();
 

@@ -2,6 +2,7 @@
  * Created by jonas on 2/13/17.
  */
 
+import com.sun.tools.javac.tree.JCTree;
 import org.qcri.rheem.api.*;
 import org.qcri.rheem.basic.data.Tuple2;
 import org.qcri.rheem.basic.operators.*;
@@ -73,6 +74,23 @@ class SelectNearestCentroidForPoint implements FunctionDescriptor.ExtendedSerial
 
 }
 
+class averageSummedUpPoints implements FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, TaggedPointCounter> {
+
+    /**
+     * Keeps the broadcasted centroids.
+     */
+
+    @Override
+    public TaggedPointCounter apply(TaggedPointCounter point) {
+        return new TaggedPointCounter(point.x / point.count, point.y / point.count, 0, 0);
+    }
+
+    @Override
+    public void open(ExecutionContext executionCtx) {
+     }
+
+}
+
 public class loopoperator {
 
     private static Collection<TaggedPointCounter> generate_random_centroids(int n_points){
@@ -127,10 +145,10 @@ public class loopoperator {
 
 
 
-        CollectionSource<TaggedPointCounter> source = new CollectionSource<>(points_collection, TaggedPointCounter.class);
+        CollectionSource<TaggedPointCounter> source = new CollectionSource<>(centroids, TaggedPointCounter.class);
         source.setName("source");
 
-        CollectionSource<TaggedPointCounter> convergenceSource = new CollectionSource<>(centroids, TaggedPointCounter.class);
+        CollectionSource<TaggedPointCounter> convergenceSource = new CollectionSource<>(points_collection, TaggedPointCounter.class);
         convergenceSource.setName("convergenceSource");
 
         LoopOperator<TaggedPointCounter, TaggedPointCounter> loopOperator = new LoopOperator<>(
@@ -151,40 +169,26 @@ public class loopoperator {
         );
         stepOperator.setName("step");
 
-        MapOperator<TaggedPointCounter, TaggedPointCounter> sameOperator;
-        sameOperator = new MapOperator<>(
-                new TransformationDescriptor<>(
-                        new FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, TaggedPointCounter>(){
+        MapDataQuantaBuilder<TaggedPointCounter, TaggedPointCounter> points_plan = points
+                .map(new SelectNearestCentroidForPoint());
+//                .reduceByKey(new FunctionDescriptor.SerializableFunction<TaggedPointCounter, Integer>() {
+//                                 @Override
+//                                 public Integer apply(TaggedPointCounter point) {
+//                                     return point.cluster;
+//                                 }
+//
+//                                 @Override
+//                                 public void open(ExecutionContext executionCtx) {
+//                                 }
+//                             }, (FunctionDescriptor.SerializableBinaryOperator<TaggedPointCounter>) (taggedPointCounter, taggedPointCounter2) -> taggedPointCounter.add_points(taggedPointCounter2)
+//                )
+//                .map(new averageSummedUpPoints());
 
-                            /**
-                             * Keeps the broadcasted centroids.
-                             */
-                            Iterable<TaggedPointCounter> centroids;
 
-                            @Override
-                            public TaggedPointCounter apply(TaggedPointCounter point) {
-                                int closest_centroid = -1;
-                                double minDistance = Double.MAX_VALUE;
-                                for (TaggedPointCounter centroid : centroids) {
-                                    double distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5);
-                                    if (distance < minDistance) {
-                                        minDistance = distance;
-                                        closest_centroid = centroid.cluster;
-                                    }
-                                }
-
-                                return new TaggedPointCounter(point.x, point.y, closest_centroid, 1);
-                            }
-
-                            @Override
-                            public void open(ExecutionContext executionCtx) {
-                                centroids = executionCtx.getBroadcast("centroids");
-                            }
-
-                        },
-                        TaggedPointCounter.class,
-                        TaggedPointCounter.class
-                )
+        MapPartitionsOperator<TaggedPointCounter, TaggedPointCounter> mappart = new MapPartitionsOperator<TaggedPointCounter, TaggedPointCounter>(
+                vals -> points_collection,
+                TaggedPointCounter.class,
+                TaggedPointCounter.class
         );
         stepOperator.setName("step");
 
@@ -203,13 +207,13 @@ public class loopoperator {
                         TaggedPointCounter.class,
                         Integer.class
                 ),
-                new ReduceDescriptor<TaggedPointCounter>(
+                new ReduceDescriptor<>(
                         (FunctionDescriptor.SerializableBinaryOperator<TaggedPointCounter>) (taggedPointCounter, taggedPointCounter2) -> taggedPointCounter.add_points(taggedPointCounter2),
                         TaggedPointCounter.class
                 )
         );
 
-        sameOperator.connectTo(0, reduce_and_cluster_and_add, 0);
+//        sameOperator.connectTo(0, reduce_and_cluster_and_add, 0);
 
         MapOperator<TaggedPointCounter, TaggedPointCounter> counter = new MapOperator<>(
                 val -> new TaggedPointCounter(0,0,0,0),
@@ -217,9 +221,9 @@ public class loopoperator {
                 TaggedPointCounter.class
         );
         counter.setName("counter");
-        loopOperator.beginIteration(sameOperator, counter);
-        loopOperator.broadcastTo("convOut", sameOperator, "centroids");
-        loopOperator.endIteration(reduce_and_cluster_and_add, counter);
+        loopOperator.beginIteration(mappart, counter);
+//        loopOperator.broadcastTo("convOut", sameOperator, "centroids");
+        loopOperator.endIteration(mappart, counter);
 
         Collection<TaggedPointCounter> output = new ArrayList<>();
 

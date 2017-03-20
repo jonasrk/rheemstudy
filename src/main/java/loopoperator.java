@@ -173,6 +173,27 @@ public class loopoperator {
         );
         reduceByClusterAndAddOperator.setName("reduce by cluster and add up");
 
+
+        MapOperator<TaggedPointCounter, TaggedPointCounter> averageOperator;
+        averageOperator = new MapOperator<>(
+                new TransformationDescriptor<>(
+                        new FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, TaggedPointCounter>(){
+                            @Override
+                            public TaggedPointCounter apply(TaggedPointCounter point) {
+                                return new TaggedPointCounter(point.x / point.count, point.y / point.count, point.cluster, 0);
+                            }
+
+                            @Override
+                            public void open(ExecutionContext executionCtx) {
+                            }
+                        },
+                        TaggedPointCounter.class,
+                        TaggedPointCounter.class
+                )
+        );
+        averageOperator.setName("take average");
+
+
         MapOperator<Integer, Integer> counter = new MapOperator<>(
                 new TransformationDescriptor<>(n -> n + 1, Integer.class, Integer.class)
         );
@@ -182,7 +203,8 @@ public class loopoperator {
         loopOperator.broadcastTo("iterOut", nearestCentroidOperator, "centroids");
         readInPointsOperator.connectTo(0, nearestCentroidOperator, 0);
         nearestCentroidOperator.connectTo(0, reduceByClusterAndAddOperator, 0);
-        loopOperator.endIteration(reduceByClusterAndAddOperator, counter);
+        reduceByClusterAndAddOperator.connectTo(0, averageOperator, 0);
+        loopOperator.endIteration(averageOperator, counter);
 
 
         Collection<TaggedPointCounter> output = new ArrayList<>();

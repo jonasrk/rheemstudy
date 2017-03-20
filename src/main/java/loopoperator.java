@@ -2,22 +2,18 @@
  * Created by jonas on 2/13/17.
  */
 
-import com.sun.tools.javac.tree.JCTree;
 import org.qcri.rheem.api.*;
-import org.qcri.rheem.basic.data.Tuple2;
 import org.qcri.rheem.basic.operators.*;
 import org.qcri.rheem.core.api.Configuration;
 import org.qcri.rheem.core.api.RheemContext;
 import org.qcri.rheem.core.function.*;
 import org.qcri.rheem.core.plan.rheemplan.RheemPlan;
 import org.qcri.rheem.core.types.DataSetType;
-import org.qcri.rheem.core.types.DataUnitType;
 import org.qcri.rheem.core.util.RheemArrays;
 import org.qcri.rheem.java.Java;
 import org.qcri.rheem.spark.Spark;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static java.util.Collections.*;
 
@@ -44,53 +40,6 @@ class TaggedPointCounter{
     }
 }
 
-// Declare UDF to select centroid for each data point.
-class SelectNearestCentroidForPoint implements FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, TaggedPointCounter> {
-
-    /**
-     * Keeps the broadcasted centroids.
-     */
-    Iterable<TaggedPointCounter> centroids;
-
-    @Override
-    public TaggedPointCounter apply(TaggedPointCounter point) {
-        int closest_centroid = -1;
-        double minDistance = Double.MAX_VALUE;
-        for (TaggedPointCounter centroid : centroids) {
-            double distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5);
-            if (distance < minDistance) {
-                minDistance = distance;
-                closest_centroid = centroid.cluster;
-            }
-        }
-
-        return new TaggedPointCounter(point.x, point.y, closest_centroid, 1);
-    }
-
-    @Override
-    public void open(ExecutionContext executionCtx) {
-        centroids = executionCtx.getBroadcast("centroids");
-    }
-
-}
-
-class averageSummedUpPoints implements FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, TaggedPointCounter> {
-
-    /**
-     * Keeps the broadcasted centroids.
-     */
-
-    @Override
-    public TaggedPointCounter apply(TaggedPointCounter point) {
-        return new TaggedPointCounter(point.x / point.count, point.y / point.count, 0, 0);
-    }
-
-    @Override
-    public void open(ExecutionContext executionCtx) {
-    }
-
-}
-
 public class loopoperator {
 
     private static Collection<TaggedPointCounter> generate_random_centroids(int n_points){
@@ -106,10 +55,9 @@ public class loopoperator {
     public static void main(String[] args){
 
         // Settings
-        String inputUrl = "file:/Users/jonas/tmp_kmeans.txt";
+        String inputUrl = "file:/Users/jonas/tmp_kmeans_big.txt";
         int k = 10;
-        int iterations = 3;
-        double epsilon = 0.01;
+        final int numIterations = 10;
 
         // Get a plan builder.
         RheemContext rheemContext = new RheemContext(new Configuration())
@@ -130,25 +78,20 @@ public class loopoperator {
 
         Collection<TaggedPointCounter> points_collection = points.collect();
 
-
         // Create initial centroids.
         Collection<TaggedPointCounter> centroids = generate_random_centroids(k);
 
-        System.out.println("initial points");
-        for (TaggedPointCounter el:
-                points_collection) {
-            System.out.println("x: " + el.x + " y: " + el.y + " cluster: " + el.cluster + " count: " + el.count);
-        }
+//        System.out.println("initial points");
+//        for (TaggedPointCounter el:
+//                points_collection) {
+//            System.out.println("x: " + el.x + " y: " + el.y + " cluster: " + el.cluster + " count: " + el.count);
+//        }
 
         System.out.println("initial centroids");
         for (TaggedPointCounter el:
                 centroids) {
             System.out.println("x: " + el.x + " y: " + el.y + " cluster: " + el.cluster + " count: " + el.count);
         }
-
-        final int numIterations = 1;
-        final int[] values = {0, 1, 2};
-
 
 
         CollectionSource<TaggedPointCounter> source = new CollectionSource<>(centroids, TaggedPointCounter.class);
@@ -167,26 +110,18 @@ public class loopoperator {
         loopOperator.setName("loop");
         loopOperator.initialize(source, convergenceSource);
 
-        MapOperator<TaggedPointCounter, TaggedPointCounter> stepOperator;
-        stepOperator = new MapOperator<>(
-                val -> new TaggedPointCounter(val.x * 2, val.y - 1, 0, 0),
-                TaggedPointCounter.class,
-                TaggedPointCounter.class
-        );
-        stepOperator.setName("step");
 
-
-        MapPartitionsOperator<TaggedPointCounter, TaggedPointCounter> mappart = new MapPartitionsOperator<TaggedPointCounter, TaggedPointCounter>(
+        MapPartitionsOperator<TaggedPointCounter, TaggedPointCounter> readInPointsOperator = new MapPartitionsOperator<>(
                 vals -> points_collection,
                 TaggedPointCounter.class,
                 TaggedPointCounter.class
         );
+        readInPointsOperator.setName("read in points");
 
-        MapOperator<TaggedPointCounter, TaggedPointCounter> nearestOperator;
-        nearestOperator = new MapOperator<>(
+        MapOperator<TaggedPointCounter, TaggedPointCounter> nearestCentroidOperator;
+        nearestCentroidOperator = new MapOperator<>(
                 new TransformationDescriptor<>(
                         new FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, TaggedPointCounter>(){
-
                             /**
                              * Keeps the broadcasted centroids.
                              */
@@ -198,14 +133,11 @@ public class loopoperator {
                                 double minDistance = Double.MAX_VALUE;
                                 for (TaggedPointCounter centroid : centroids) {
                                     double distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5);
-                                    System.out.println(point.x + " x " + centroid.x + " x " + point.y + " x " + centroid.y);
-                                    System.out.println("distance: " + distance);
                                     if (distance < minDistance) {
                                         minDistance = distance;
                                         closest_centroid = centroid.cluster;
                                     }
                                 }
-
                                 return new TaggedPointCounter(point.x, point.y, closest_centroid, 1);
                             }
 
@@ -213,24 +145,20 @@ public class loopoperator {
                             public void open(ExecutionContext executionCtx) {
                                 centroids = executionCtx.getBroadcast("centroids");
                             }
-
                         },
                         TaggedPointCounter.class,
                         TaggedPointCounter.class
                 )
         );
+        nearestCentroidOperator.setName("select nearest centroid");
 
-
-
-
-        ReduceByOperator<TaggedPointCounter, Integer> reduce_and_cluster_and_add = new ReduceByOperator<>(
+        ReduceByOperator<TaggedPointCounter, Integer> reduceByClusterAndAddOperator = new ReduceByOperator<>(
                 new TransformationDescriptor<>(
                         new FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, Integer>() {
                             @Override
                             public Integer apply(TaggedPointCounter point) {
                                 return point.cluster;
                             }
-
                             @Override
                             public void open(ExecutionContext executionCtx) {
                             }
@@ -243,17 +171,19 @@ public class loopoperator {
                         TaggedPointCounter.class
                 )
         );
-
-        mappart.connectTo(0, nearestOperator, 0);
-        nearestOperator.connectTo(0, reduce_and_cluster_and_add, 0);
+        reduceByClusterAndAddOperator.setName("reduce by cluster and add up");
 
         MapOperator<Integer, Integer> counter = new MapOperator<>(
                 new TransformationDescriptor<>(n -> n + 1, Integer.class, Integer.class)
         );
         counter.setName("counter");
-        loopOperator.beginIteration(mappart, counter);
-        loopOperator.broadcastTo("iterOut", nearestOperator, "centroids");
-        loopOperator.endIteration(reduce_and_cluster_and_add, counter);
+
+        loopOperator.beginIteration(readInPointsOperator, counter);
+        loopOperator.broadcastTo("iterOut", nearestCentroidOperator, "centroids");
+        readInPointsOperator.connectTo(0, nearestCentroidOperator, 0);
+        nearestCentroidOperator.connectTo(0, reduceByClusterAndAddOperator, 0);
+        loopOperator.endIteration(reduceByClusterAndAddOperator, counter);
+
 
         Collection<TaggedPointCounter> output = new ArrayList<>();
 
@@ -262,17 +192,15 @@ public class loopoperator {
         loopOperator.outputConnectTo(sink);
 
 
-
-
-
         RheemPlan rheemPlan = new RheemPlan(sink);
 
         rheemContext.execute(rheemPlan);
-        System.out.println("output");
+
+
+        System.out.println("final centroids");
         for (TaggedPointCounter el:
                 output) {
             System.out.println("x: " + el.x + " y: " + el.y + " cluster: " + el.cluster + " count: " + el.count);
         }
-
     }
 }

@@ -188,7 +188,28 @@ public class loopoperator {
         );
         stepOperator.setName("step");
 
-//        stepOperator.connectTo(0, sameOperator, 0);
+        ReduceByOperator<TaggedPointCounter, Integer> reduce_and_cluster_and_add = new ReduceByOperator<>(
+                new TransformationDescriptor<>(
+                        new FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, Integer>() {
+                            @Override
+                            public Integer apply(TaggedPointCounter point) {
+                                return point.cluster;
+                            }
+
+                            @Override
+                            public void open(ExecutionContext executionCtx) {
+                            }
+                        },
+                        TaggedPointCounter.class,
+                        Integer.class
+                ),
+                new ReduceDescriptor<TaggedPointCounter>(
+                        (FunctionDescriptor.SerializableBinaryOperator<TaggedPointCounter>) (taggedPointCounter, taggedPointCounter2) -> taggedPointCounter.add_points(taggedPointCounter2),
+                        TaggedPointCounter.class
+                )
+        );
+
+        sameOperator.connectTo(0, reduce_and_cluster_and_add, 0);
 
         MapOperator<TaggedPointCounter, TaggedPointCounter> counter = new MapOperator<>(
                 val -> new TaggedPointCounter(0,0,0,0),
@@ -198,7 +219,7 @@ public class loopoperator {
         counter.setName("counter");
         loopOperator.beginIteration(sameOperator, counter);
         loopOperator.broadcastTo("convOut", sameOperator, "centroids");
-        loopOperator.endIteration(sameOperator, counter);
+        loopOperator.endIteration(reduce_and_cluster_and_add, counter);
 
         Collection<TaggedPointCounter> output = new ArrayList<>();
 

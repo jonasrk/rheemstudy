@@ -3,17 +3,20 @@
  */
 
 import org.qcri.rheem.api.*;
+import org.qcri.rheem.basic.data.Tuple2;
 import org.qcri.rheem.basic.operators.*;
 import org.qcri.rheem.core.api.Configuration;
 import org.qcri.rheem.core.api.RheemContext;
 import org.qcri.rheem.core.function.*;
 import org.qcri.rheem.core.plan.rheemplan.RheemPlan;
 import org.qcri.rheem.core.types.DataSetType;
+import org.qcri.rheem.core.types.DataUnitType;
 import org.qcri.rheem.core.util.RheemArrays;
 import org.qcri.rheem.java.Java;
 import org.qcri.rheem.spark.Spark;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static java.util.Collections.*;
 
@@ -150,20 +153,50 @@ public class loopoperator {
 
         MapOperator<TaggedPointCounter, TaggedPointCounter> sameOperator;
         sameOperator = new MapOperator<>(
-                val -> new TaggedPointCounter(val.x * 10, val.y - 10, 0, 0),
-                TaggedPointCounter.class,
-                TaggedPointCounter.class
+                new TransformationDescriptor<>(
+                        new FunctionDescriptor.ExtendedSerializableFunction<TaggedPointCounter, TaggedPointCounter>(){
+
+                    /**
+                     * Keeps the broadcasted centroids.
+                     */
+                    Iterable<TaggedPointCounter> centroids;
+
+                    @Override
+                    public TaggedPointCounter apply(TaggedPointCounter point) {
+                        int closest_centroid = -1;
+                        double minDistance = Double.MAX_VALUE;
+                        for (TaggedPointCounter centroid : centroids) {
+                            double distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5);
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                closest_centroid = centroid.cluster;
+                            }
+                        }
+
+                        return new TaggedPointCounter(point.x, point.y, closest_centroid, 1);
+                    }
+
+                    @Override
+                    public void open(ExecutionContext executionCtx) {
+                        centroids = executionCtx.getBroadcast("centroids");
+                    }
+
+                },
+                DataUnitType.createBasicUnchecked(Tuple2.class),
+                DataUnitType.createBasicUnchecked(Tuple2.class)
+        )
         );
         stepOperator.setName("step");
 
-        stepOperator.connectTo(0, sameOperator, 0);
+//        stepOperator.connectTo(0, sameOperator, 0);
 
         MapOperator<Integer, Integer> counter = new MapOperator<>(
                 new TransformationDescriptor<>(n -> n + 1, Integer.class, Integer.class)
         );
         counter.setName("counter");
         loopOperator.beginIteration(stepOperator, counter);
-        loopOperator.endIteration(sameOperator, counter);
+        loopOperator.broadcastTo("convOut", stepOperator, "centroids");
+        loopOperator.endIteration(stepOperator, counter);
 
         Collection<TaggedPointCounter> output = new ArrayList<>();
 

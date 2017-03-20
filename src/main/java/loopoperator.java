@@ -154,14 +154,14 @@ public class loopoperator {
         CollectionSource<TaggedPointCounter> source = new CollectionSource<>(centroids, TaggedPointCounter.class);
         source.setName("source");
 
-        CollectionSource<TaggedPointCounter> convergenceSource = new CollectionSource<>(points_collection, TaggedPointCounter.class);
+        CollectionSource<Integer> convergenceSource = new CollectionSource<>(RheemArrays.asList(0), Integer.class);
         convergenceSource.setName("convergenceSource");
 
-        LoopOperator<TaggedPointCounter, TaggedPointCounter> loopOperator = new LoopOperator<>(
+        LoopOperator<TaggedPointCounter, Integer> loopOperator = new LoopOperator<>(
                 DataSetType.createDefault(TaggedPointCounter.class),
-                DataSetType.createDefault(TaggedPointCounter.class),
-                (PredicateDescriptor.SerializablePredicate<Collection<TaggedPointCounter>>) collection ->
-                        collection.iterator().next().x >= 0.0,
+                DataSetType.createDefault(Integer.class),
+                (PredicateDescriptor.SerializablePredicate<Collection<Integer>>) collection ->
+                        collection.iterator().next() >= numIterations,
                 numIterations
         );
         loopOperator.setName("loop");
@@ -247,10 +247,8 @@ public class loopoperator {
         mappart.connectTo(0, nearestOperator, 0);
         nearestOperator.connectTo(0, reduce_and_cluster_and_add, 0);
 
-        MapOperator<TaggedPointCounter, TaggedPointCounter> counter = new MapOperator<>(
-                val -> new TaggedPointCounter(0,0,0,0),
-                TaggedPointCounter.class,
-                TaggedPointCounter.class
+        MapOperator<Integer, Integer> counter = new MapOperator<>(
+                new TransformationDescriptor<>(n -> n + 1, Integer.class, Integer.class)
         );
         counter.setName("counter");
         loopOperator.beginIteration(mappart, counter);

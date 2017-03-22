@@ -16,10 +16,10 @@ object kmeansUnrolled {
   def main(args: Array[String]) {
 
     // Settings
-    val inputUrl = "file:/Users/jonas/tmp_kmeans.txt"
-    val k = 5
-    val iterations = 100
-    val epsilon = 0.1
+    val inputUrl = "file:/Users/jonas/tmp_kmeans_big.txt"
+    val k = 10
+    val iterations = 4
+    val epsilon = 0.01
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -127,13 +127,15 @@ object kmeansUnrolled {
       .map { line =>
         val fields = line.split(",")
         TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 0, false)
-      }.withName("Create points")
+      }
+      .withName("Create points")
 
     // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
       .loadCollection(for (i <- 1 to k) yield TaggedPointCounter(random.nextFloat(), random.nextFloat(), i, 0, false))
       .withName("Load random centroids")
+//      .map { x => println("### initial centroid in iteration ZERO: " + x ); x }
 
 
     // START iteration ZERO
@@ -159,6 +161,7 @@ object kmeansUnrolled {
       .withCardinalityEstimator(k)
       .map(_.average)
       .withName("Average points - iteration zero")
+//      .map { x => println("### new centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: Group
     // input ID_2
@@ -184,6 +187,7 @@ object kmeansUnrolled {
     var StableCentroids = mapPartitionOperator_Zero
       .filter(_.stable == true)
       .withName("Filter stable centroids - iteration zero")
+//      .map { x => println("### stable centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: Filter - unstable // return only the centroids that still change and should be kept
     // input ID_5
@@ -198,6 +202,7 @@ object kmeansUnrolled {
     UnstableCentroids += mapPartitionOperator_Zero
       .filter(_.stable == false)
       .withName("Filter unstable centroids - iteration zero")
+//      .map { x => println("### unstable centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: Filter - filters out the points belonging to a stable centroid
     // input ID_1
@@ -223,8 +228,9 @@ object kmeansUnrolled {
 
       var selectNearestOperator = UnstablePoints.last
         .mapJava(new SelectNearestCentroidForPoint)
-        .withBroadcast(UnstableCentroids.last, "new_centroids")
+        .withBroadcast(UnstableCentroids.last, "centroids")
         .withName("Find nearest centroid")
+//        .map { x => println("### find nearest in iteration " + iteration + ": " + x ); x }
 
       // OPERATOR: Reduce, Average
       // input ID_7
@@ -250,8 +256,9 @@ object kmeansUnrolled {
 
       var mapPartitionOperator = reduceAverage
         .mapJava(new TagStableCentroids)
-        .withBroadcast(UnstableCentroids.last, "new_centroids")
+        .withBroadcast(UnstableCentroids.last, "centroids")
         .withName("Tag stable centroids")
+//        .map { x => println("### TaggedCentroid in iteration " + iteration + ": " + x ); x }
 
       // OPERATOR: Filter
       // input ID_10
@@ -260,17 +267,19 @@ object kmeansUnrolled {
       var NewStableCentroids = mapPartitionOperator
         .filter(_.stable == true)
         .withName("Filter stable centroids")
+//        .map { x => println("### Stable centroids in iteration " + iteration + ": " + x ); x }
 
 
       // OPERATOR: UNION
       // input ID_11
       // input ID_12
 
-      StableCentroids.union(NewStableCentroids)
+      StableCentroids = StableCentroids.union(NewStableCentroids)
 
       UnstableCentroids += mapPartitionOperator
         .filter(_.stable == false)
-        .withName("Filter unstable centroids - iteration zero")
+        .withName("Filter unstable centroids")
+//        .map { x => println("### unstable centroid in iteration " + iteration + ": " + x ); x }
 
       UnstablePoints += selectNearestOperator
         .mapJava(new TagStablePoints)
@@ -280,7 +289,8 @@ object kmeansUnrolled {
       // END iteration 1..n
     }
 
-    print(StableCentroids.collect())
+
+    println("StableCentroids: " + StableCentroids.count.collect())
 
     // Output of the Unions goes into Collection Sink
 

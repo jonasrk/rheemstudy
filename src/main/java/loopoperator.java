@@ -200,7 +200,6 @@ public class loopoperator {
         counter.setName("counter");
 
         loopOperator.beginIteration(readInPointsOperator, counter);
-        points
         loopOperator.broadcastTo("iterOut", nearestCentroidOperator, "centroids");
         readInPointsOperator.connectTo(0, nearestCentroidOperator, 0);
         nearestCentroidOperator.connectTo(0, reduceByClusterAndAddOperator, 0);

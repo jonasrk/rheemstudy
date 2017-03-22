@@ -73,11 +73,7 @@ object kmeans_purge {
             closest_centroid = centroid.cluster
           }
         }
-
-
         return new TaggedPointCounter(point.x, point.y, closest_centroid, 1)
-
-
       }
     }
 

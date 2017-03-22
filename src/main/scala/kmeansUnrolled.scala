@@ -18,7 +18,7 @@ object kmeansUnrolled {
     val inputUrl = "file:/Users/jonas/tmp_kmeans.txt"
     val k = 5
     val iterations = 10
-    val epsilon = 0.0001
+    val epsilon = 0.000001
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -70,20 +70,46 @@ object kmeansUnrolled {
       }
 
       override def apply(point: TaggedPointCounter): TaggedPointCounter = {
-        var closest_centroid = -1
         var minDistance = Double.PositiveInfinity
         for (centroid <- centroids) {
           val distance = Math.pow(Math.pow(point.x - centroid.x, 2) + Math.pow(point.y - centroid.y, 2), 0.5)
           if (distance < minDistance) {
             minDistance = distance
-            closest_centroid = centroid.cluster
           }
         }
         if (minDistance < epsilon){
-          return new TaggedPointCounter(point.x, point.y, closest_centroid, 1, true)
+          return new TaggedPointCounter(point.x, point.y, point.cluster, 1, true)
         }
         else {
-          return new TaggedPointCounter(point.x, point.y, closest_centroid, 1, false)
+          return new TaggedPointCounter(point.x, point.y, point.cluster, 1, false)
+        }
+
+      }
+    }
+
+    // Declare UDF to select centroid for each data point.
+    class TagStablePoints extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
+
+      /** Keeps the broadcasted centroids. */
+      var new_centroids: Iterable[TaggedPointCounter] = _
+
+      override def open(executionCtx: ExecutionContext) = {
+        new_centroids = executionCtx.getBroadcast[TaggedPointCounter]("new_centroids")
+      }
+
+      override def apply(point: TaggedPointCounter): TaggedPointCounter = {
+        var closest_centroid = -1
+        var hasCentroidLeft = false
+        for (centroid <- new_centroids) {
+          if (centroid.cluster == point.cluster){
+            hasCentroidLeft = true
+          }
+        }
+        if (hasCentroidLeft){
+          return new TaggedPointCounter(point.x, point.y, point.cluster, 1, false)
+        }
+        else {
+          return new TaggedPointCounter(point.x, point.y, point.cluster, 1, true)
         }
 
       }
@@ -149,11 +175,13 @@ object kmeansUnrolled {
       .withBroadcast(initialCentroids, "centroids")
       .withName("Tag stable centroids - iteration zero")
 
-    println(mapPartitionOperator_Zero.collect())
-
     // OPERATOR: Filter - stable // return only the centroids that do not change anymore
     // input ID_4
     // output ID_11
+
+    var FilterStableOperator_Zero = mapPartitionOperator_Zero
+      .filter(_.stable == true)
+      .withName("Filter stable centroids - iteration zero")
 
     // OPERATOR: Filter - unstable // return only the centroids that still change and should be kept
     // input ID_5
@@ -161,10 +189,21 @@ object kmeansUnrolled {
     // broadcast_out ID_b1
     // broadcast_out ID_b2
 
+    var FilterUnstableOperator_Zero = mapPartitionOperator_Zero
+      .filter(_.stable == false)
+      .withName("Filter unstable centroids - iteration zero")
+
     // OPERATOR: Filter - filters out the points belonging to a stable centroid
     // input ID_1
     // broadcast_in ID_b0
     // output ID_6 (remaining points)
+
+    var FilterPointsOperator_Zero = selectNearestOperator_Zero
+        .mapJava(new TagStablePoints)
+        .withBroadcast(FilterUnstableOperator_Zero, "new_centroids")
+        .filter(_.stable == false)
+
+    println(FilterPointsOperator_Zero.collect())
 
     // END iteration ZERO
     // START iteration 1..n

@@ -15,15 +15,16 @@ import scala.util.Random
 object kmeansUnrolled {
   def main(args: Array[String]) {
 
+    println(scala.util.Properties.versionString)
+
     // Settings
-    val inputUrl = "file:/Users/jonas/tmp_kmeans_big.txt"
-    val k = 10
-    val iterations = 4
+    val inputUrl = "hdfs://tenemhead2/data/2dpoints/tmp_kmeans_big.txt"
+    val k = 100
+    val iterations = 5
     val epsilon = 0.01
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
-      .withPlugin(Java.basicPlugin)
       .withPlugin(Spark.basicPlugin)
 
     val planBuilder = new PlanBuilder(rheemContext)
@@ -119,8 +120,6 @@ object kmeansUnrolled {
 
     // input points
     // input centroids
-
-
     // Read and parse the input file(s).
     val points = planBuilder
       .readTextFile(inputUrl).withName("Read file")
@@ -140,12 +139,12 @@ object kmeansUnrolled {
 
     // START iteration ZERO
 
+
     // OPERATOR: select nearest centroid
     // input points
     // broadcast_in centroids
     // output ID_0
     // output ID_1
-
     var selectNearestOperator_Zero = points
       .mapJava(new SelectNearestCentroidForPoint)
       .withBroadcast(initialCentroids, "centroids")
@@ -154,7 +153,6 @@ object kmeansUnrolled {
     // OPERATOR: Reduce, Average
     // input ID_0
     // output ID_2
-
     var reduceAverage_Zero = selectNearestOperator_Zero
       .reduceByKey(_.cluster, _.add_points(_))
       .withName("Add up points - iteration zero")
@@ -163,18 +161,11 @@ object kmeansUnrolled {
       .withName("Average points - iteration zero")
 //      .map { x => println("### new centroid in iteration ZERO: " + x ); x }
 
-    // OPERATOR: Group
-    // input ID_2
-    // output ID_3
-
-    // unclear what for
-
     // OPERATOR: MapPartition // finds out if new centroids are stable or not
     // input ID_3
     // broadcast_in centroids
     // output ID_4
     // output ID_5
-
     var mapPartitionOperator_Zero = reduceAverage_Zero
       .mapJava(new TagStableCentroids)
       .withBroadcast(initialCentroids, "centroids")
@@ -183,7 +174,6 @@ object kmeansUnrolled {
     // OPERATOR: Filter - stable // return only the centroids that do not change anymore
     // input ID_4
     // output ID_11
-
     var StableCentroids = mapPartitionOperator_Zero
       .filter(_.stable == true)
       .withName("Filter stable centroids - iteration zero")
@@ -194,11 +184,8 @@ object kmeansUnrolled {
     // broadcast_out ID_b0
     // broadcast_out ID_b1
     // broadcast_out ID_b2
-
     // Use ListBuffers to add operators in every loop iteration
-
     var UnstableCentroids = new ListBuffer[DataQuanta[TaggedPointCounter]]()
-
     UnstableCentroids += mapPartitionOperator_Zero
       .filter(_.stable == false)
       .withName("Filter unstable centroids - iteration zero")
@@ -208,7 +195,6 @@ object kmeansUnrolled {
     // input ID_1
     // broadcast_in ID_b0
     // output ID_6 (remaining points)
-
     var UnstablePoints = new ListBuffer[DataQuanta[TaggedPointCounter]]()
     UnstablePoints += selectNearestOperator_Zero
       .mapJava(new TagStablePoints)
@@ -217,15 +203,15 @@ object kmeansUnrolled {
 
 
     // END iteration ZERO
-    // START iteration 1..n
 
-    for (iteration <- 0 to iterations) {
+
+    // START iteration 1..n
+    for (iteration <- 1 to iterations) {
 
       // OPERATOR: select nearest centroid
       // input ID_6
       // broadcast_in ID_b1
       // output ID_7
-
       var selectNearestOperator = UnstablePoints.last
         .mapJava(new SelectNearestCentroidForPoint)
         .withBroadcast(UnstableCentroids.last, "centroids")
@@ -235,7 +221,6 @@ object kmeansUnrolled {
       // OPERATOR: Reduce, Average
       // input ID_7
       // output ID_8
-
       var reduceAverage = selectNearestOperator
         .reduceByKey(_.cluster, _.add_points(_))
         .withName("Add up points")
@@ -243,17 +228,11 @@ object kmeansUnrolled {
         .map(_.average)
         .withName("Average points")
 
-      // OPERATOR: Group
-      // input ID_8
-      // output ID_9
-
-      // unclear what for
 
       // OPERATOR: MapPartition
       // input ID_9
       // broadcast_in ID_b2
       // output ID_10
-
       var mapPartitionOperator = reduceAverage
         .mapJava(new TagStableCentroids)
         .withBroadcast(UnstableCentroids.last, "centroids")
@@ -263,17 +242,14 @@ object kmeansUnrolled {
       // OPERATOR: Filter
       // input ID_10
       // output ID_12
-
       var NewStableCentroids = mapPartitionOperator
         .filter(_.stable == true)
         .withName("Filter stable centroids")
 //        .map { x => println("### Stable centroids in iteration " + iteration + ": " + x ); x }
 
-
       // OPERATOR: UNION
       // input ID_11
       // input ID_12
-
       StableCentroids = StableCentroids.union(NewStableCentroids)
 
       UnstableCentroids += mapPartitionOperator
@@ -285,12 +261,11 @@ object kmeansUnrolled {
         .mapJava(new TagStablePoints)
         .withBroadcast(UnstableCentroids.last, "new_centroids")
         .filter(_.stable == false)
-
       // END iteration 1..n
     }
 
 
-    println("StableCentroids: " + StableCentroids.count.collect())
+    println("StableCentroids " + StableCentroids.count.collect())
 
     // Output of the Unions goes into Collection Sink
 

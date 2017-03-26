@@ -15,8 +15,6 @@ import scala.util.Random
 object kmeansUnrolled {
   def main(args: Array[String]) {
 
-    println(scala.util.Properties.versionString)
-
     // Settings
     val inputUrl = "hdfs://tenemhead2/data/2dpoints/tmp_kmeans_big.txt"
     val k = 100

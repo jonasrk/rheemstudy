@@ -11,15 +11,15 @@ object WordcountScala {
   def main(args: Array[String]) {
 
     // Settings
-    val inputUrl = "file:/Users/jonas/tmp.txt"
+    val inputUrl = "hdfs://tenemhead2/data/2dpoints/tmp_kmeans_big.txt"
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
-      .withPlugin(Java.basicPlugin)
+//      .withPlugin(Java.basicPlugin)
       .withPlugin(Spark.basicPlugin)
     val planBuilder = new PlanBuilder(rheemContext)
       .withJobName(s"WordCount ($inputUrl)")
-      .withUdfJarsOf(this.getClass)
+      .withUdfJarsOf(WordcountScala.getClass)
 
     val wordcounts = planBuilder
       // Read the text file.

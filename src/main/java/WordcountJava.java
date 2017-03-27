@@ -18,11 +18,11 @@ public class WordcountJava {
     public static void main(String[] args){
 
         // Settings
-        String inputUrl = "file:/Users/jonas/tmp.txt";
+        String inputUrl = "hdfs://tenemhead2/data/2dpoints/tmp_kmeans_big.txt";
 
         // Get a plan builder.
         RheemContext rheemContext = new RheemContext(new Configuration())
-                .withPlugin(Java.basicPlugin())
+//                .withPlugin(Java.basicPlugin())
                 .withPlugin(Spark.basicPlugin());
         JavaPlanBuilder planBuilder = new JavaPlanBuilder(rheemContext)
                 .withJobName(String.format("WordCount (%s)", inputUrl))

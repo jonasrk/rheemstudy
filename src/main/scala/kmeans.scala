@@ -1,6 +1,3 @@
-/**
-  * Created by jonas on 2/13/17.
-  */
 import org.qcri.rheem.api._
 import org.qcri.rheem.core.api.{Configuration, RheemContext}
 import org.qcri.rheem.core.function.FunctionDescriptor.ExtendedSerializableFunction
@@ -14,14 +11,14 @@ object kmeans {
   def main(args: Array[String]) {
 
     // Settings
-    val inputUrl = "file:/Users/jonas/tmp_kmeans.txt"
+    val inputUrl = "hdfs://tenemhead2/data/2dpoints/tmp_kmeans_big.txt"
     val k = 5
-    val iterations = 100
+    val iterations = 5
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
       .withPlugin(Java.basicPlugin)
-      .withPlugin(Spark.basicPlugin)
+//      .withPlugin(Spark.basicPlugin)
     val planBuilder = new PlanBuilder(rheemContext)
       .withJobName(s"k-means ($inputUrl, k=$k, $iterations iterations)")
       .withUdfJarsOf(this.getClass)

@@ -17,22 +17,18 @@ object kmeansUnrolled {
 
     // Settings
     val inputUrl = "hdfs://tenemhead2/data/2dpoints/tmp_kmeans_big.txt"
-    val k = 100
+    val k = 10
     val iterations = 5
     val epsilon = 0.01
 
-    // Get a plan builder.
-    val rheemContext = new RheemContext(new Configuration)
-      .withPlugin(Spark.basicPlugin)
+    class TaggedPointCounter(val x: Double, val y: Double, val cluster: Int, val count: Long,  val stable: Boolean) {
+      def add_points(that: TaggedPointCounter): TaggedPointCounter = {
+        new TaggedPointCounter(this.x + that.x, this.y + that.y, this.cluster, this.count + that.count, false)
+      }
 
-    val planBuilder = new PlanBuilder(rheemContext)
-      .withJobName(s"k-means ($inputUrl, k=$k, $iterations iterations)")
-      .withUdfJarsOf(this.getClass)
-
-    case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long, stable: Boolean) {
-      def add_points(that: TaggedPointCounter) = TaggedPointCounter(this.x + that.x, this.y + that.y, this.cluster, this.count + that.count, false)
-
-      def average = TaggedPointCounter(x / count, y / count, cluster, 0, false)
+      def average(): TaggedPointCounter = {
+        new TaggedPointCounter(x / count, y / count, cluster, 0, false)
+      }
     }
 
     // Declare UDF to select centroid for each data point.
@@ -115,6 +111,14 @@ object kmeansUnrolled {
       }
     }
 
+    // Get a plan builder.
+    val rheemContext = new RheemContext(new Configuration)
+      .withPlugin(Spark.basicPlugin)
+
+    val planBuilder = new PlanBuilder(rheemContext)
+      .withJobName(s"k-means ($inputUrl, k=$k, $iterations iterations)")
+      .withUdfJarsOf(this.getClass)
+
 
     // input points
     // input centroids
@@ -123,14 +127,14 @@ object kmeansUnrolled {
       .readTextFile(inputUrl).withName("Read file")
       .map { line =>
         val fields = line.split(",")
-        TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 0, false)
+        new TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 0, false)
       }
       .withName("Create points")
 
     // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
-      .loadCollection(for (i <- 1 to k) yield TaggedPointCounter(random.nextFloat(), random.nextFloat(), i, 0, false))
+      .loadCollection(for (i <- 1 to k) yield new TaggedPointCounter(random.nextFloat(), random.nextFloat(), i, 0, false))
       .withName("Load random centroids")
 //      .map { x => println("### initial centroid in iteration ZERO: " + x ); x }
 

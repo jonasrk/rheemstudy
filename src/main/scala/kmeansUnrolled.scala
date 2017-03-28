@@ -20,7 +20,7 @@ object kmeansUnrolled {
     val k = 25
     val iterations = 30
     val epsilon = 0.001
-    val m = 30
+    val m = 1
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)

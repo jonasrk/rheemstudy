@@ -17,9 +17,9 @@ object kmeansUnrolled {
 
     // Settings
     val inputUrl = "hdfs://tenemhead2/data/2dpoints/kmeans_points_1m.txt"
-    val k = 100
-    val iterations = 10
-    val epsilon = 0.00001
+    val k = 50
+    val iterations = 20
+    val epsilon = 0.0001
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)

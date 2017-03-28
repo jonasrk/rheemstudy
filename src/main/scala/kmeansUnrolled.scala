@@ -23,7 +23,7 @@ object kmeansUnrolled {
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
-      .withPlugin(Spark.basicPlugin)
+      .withPlugin(Java.basicPlugin)
 
     val planBuilder = new PlanBuilder(rheemContext)
       .withJobName(s"k-means ($inputUrl, k=$k, $iterations iterations)")

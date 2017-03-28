@@ -14,7 +14,7 @@ object kmeans {
   def main(args: Array[String]) {
 
     // Settings
-    val inputUrl = "file:/Users/jonas/tmp_kmeans.txt"
+    val inputUrl = "hdfs://tenemhead2/data/2dpoints/tmp_kmeans_big.txt"
     val k = 5
     val iterations = 100
 

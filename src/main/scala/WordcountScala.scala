@@ -15,7 +15,7 @@ object WordcountScala {
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
-//      .withPlugin(Java.basicPlugin)
+      .withPlugin(Java.basicPlugin)
       .withPlugin(Spark.basicPlugin)
     val planBuilder = new PlanBuilder(rheemContext)
       .withJobName(s"WordCount ($inputUrl)")

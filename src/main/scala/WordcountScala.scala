@@ -11,7 +11,7 @@ object WordcountScala {
   def main(args: Array[String]) {
 
     // Settings
-    val inputUrl = "hdfs://tenemhead2/data/2dpoints/tmp_kmeans_big.txt"
+    val inputUrl = "file:/Users/jonas/tmp.txt"
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)

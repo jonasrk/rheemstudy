@@ -16,9 +16,9 @@ object kmeansUnrolled {
   def main(args: Array[String]) {
 
     // Settings
-    val inputUrl = "hdfs://tenemhead2/data/2dpoints/kmeans_points_10m.txt"
-    val k = 1000
-    val iterations = 100
+    val inputUrl = "hdfs://tenemhead2/data/2dpoints/kmeans_points_1m.txt"
+    val k = 100
+    val iterations = 10
     val epsilon = 0.00001
 
     // Get a plan builder.

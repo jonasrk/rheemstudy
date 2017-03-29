@@ -21,8 +21,7 @@ object kmeansUnrolled {
     val iterations = 20
     val epsilon = 0.001
 
-    var first_iteration_platform = Java.platform
-    var final_count_platform = Java.platform
+    var first_iteration_platform, final_count_platform = null
     var m = 0
 
     if (args(1).equals("mixed")){

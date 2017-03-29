@@ -17,8 +17,8 @@ object kmeansUnrolled {
 
     // Settings
     val inputUrl = "hdfs://tenemhead2/data/2dpoints/kmeans_points_1m.txt"
-    val k = 25
-    val iterations = 30
+    val k = 50
+    val iterations = 25
     val epsilon = 0.001
     val m = 2
 

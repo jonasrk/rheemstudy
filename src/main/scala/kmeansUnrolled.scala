@@ -40,6 +40,10 @@ object kmeansUnrolled {
       m = 0
     }
 
+  println(args(1))
+    println("first_iteration_platform_id: " + first_iteration_platform_id)
+    println("final_count_platform_id: " + final_count_platform_id)
+    println("m: " + m)
 
 
 

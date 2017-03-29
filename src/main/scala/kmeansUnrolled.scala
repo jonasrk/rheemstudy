@@ -26,21 +26,21 @@ object kmeansUnrolled {
     var final_count_platform_id = 0
     var m = 0
 
-    if (args(1).equals("mixed")){
+    if (args(0).equals("mixed")){
       first_iteration_platform_id = 1
       final_count_platform_id = 0
-      m = args(2).toInt
-    } else if (args(1).equals("spark")) {
+      m = args(1).toInt
+    } else if (args(0).equals("spark")) {
       first_iteration_platform_id = 1
       final_count_platform_id = 1
       m = iterations
-    } else if (args(1).equals("java")) {
+    } else if (args(0).equals("java")) {
       first_iteration_platform_id = 0
       final_count_platform_id = 0
       m = 0
     }
 
-  println(args(1))
+    println(args(0))
     println("first_iteration_platform_id: " + first_iteration_platform_id)
     println("final_count_platform_id: " + final_count_platform_id)
     println("m: " + m)

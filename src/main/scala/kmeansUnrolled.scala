@@ -20,7 +20,10 @@ object kmeansUnrolled {
     val k = 25
     val iterations = 30
     val epsilon = 0.001
-    val m = 1
+    val m = 0
+
+    val first_iteration_platform = Java.platform
+    val final_count_platform = Java.platform
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -128,15 +131,15 @@ object kmeansUnrolled {
         TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 0, false)
       }
       .withName("Create points")
-      .withTargetPlatforms(Spark.platform)
+      .withTargetPlatforms(first_iteration_platform)
 
     // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
       .loadCollection(for (i <- 1 to k) yield TaggedPointCounter(random.nextFloat(), random.nextFloat(), i, 0, false))
       .withName("Load random centroids")
-      .withTargetPlatforms(Spark.platform)
-//      .map { x => println("### initial centroid in iteration ZERO: " + x ); x }
+      .withTargetPlatforms(first_iteration_platform)
+    //      .map { x => println("### initial centroid in iteration ZERO: " + x ); x }
 
 
     // START iteration ZERO
@@ -151,7 +154,7 @@ object kmeansUnrolled {
       .mapJava(new SelectNearestCentroidForPoint)
       .withBroadcast(initialCentroids, "centroids")
       .withName("Find nearest centroid - iteration zero")
-      .withTargetPlatforms(Spark.platform)
+      .withTargetPlatforms(first_iteration_platform)
 
     // OPERATOR: Reduce, Average
     // input ID_0
@@ -162,8 +165,8 @@ object kmeansUnrolled {
       .withCardinalityEstimator(k)
       .map(_.average)
       .withName("Average points - iteration zero")
-      .withTargetPlatforms(Spark.platform)
-//      .map { x => println("### new centroid in iteration ZERO: " + x ); x }
+      .withTargetPlatforms(first_iteration_platform)
+    //      .map { x => println("### new centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: MapPartition // finds out if new centroids are stable or not
     // input ID_3
@@ -174,7 +177,7 @@ object kmeansUnrolled {
       .mapJava(new TagStableCentroids)
       .withBroadcast(initialCentroids, "centroids")
       .withName("Tag stable centroids - iteration zero")
-      .withTargetPlatforms(Spark.platform)
+      .withTargetPlatforms(first_iteration_platform)
 
     // OPERATOR: Filter - stable // return only the centroids that do not change anymore
     // input ID_4
@@ -182,8 +185,8 @@ object kmeansUnrolled {
     var StableCentroids = mapPartitionOperator_Zero
       .filter(_.stable == true)
       .withName("Filter stable centroids - iteration zero")
-      .withTargetPlatforms(Spark.platform)
-//      .map { x => println("### stable centroid in iteration ZERO: " + x ); x }
+      .withTargetPlatforms(first_iteration_platform)
+    //      .map { x => println("### stable centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: Filter - unstable // return only the centroids that still change and should be kept
     // input ID_5
@@ -195,8 +198,8 @@ object kmeansUnrolled {
     UnstableCentroids += mapPartitionOperator_Zero
       .filter(_.stable == false)
       .withName("Filter unstable centroids - iteration zero")
-      .withTargetPlatforms(Spark.platform)
-//      .map { x => println("### unstable centroid in iteration ZERO: " + x ); x }
+      .withTargetPlatforms(first_iteration_platform)
+    //      .map { x => println("### unstable centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: Filter - filters out the points belonging to a stable centroid
     // input ID_1
@@ -208,7 +211,7 @@ object kmeansUnrolled {
       .withBroadcast(UnstableCentroids.last, "new_centroids")
       .filter(_.stable == false)
       .withName("Filter unstable points - iteration zero")
-      .withTargetPlatforms(Spark.platform)
+      .withTargetPlatforms(first_iteration_platform)
 
 
     // END iteration ZERO
@@ -226,7 +229,7 @@ object kmeansUnrolled {
         .withBroadcast(UnstableCentroids.last, "centroids")
         .withName("Find nearest centroid")
         .withTargetPlatforms(Spark.platform)
-//        .map { x => println("### find nearest in iteration " + iteration + ": " + x ); x }
+      //        .map { x => println("### find nearest in iteration " + iteration + ": " + x ); x }
 
       // OPERATOR: Reduce, Average
       // input ID_7
@@ -249,7 +252,7 @@ object kmeansUnrolled {
         .withBroadcast(UnstableCentroids.last, "centroids")
         .withName("Tag stable centroids")
         .withTargetPlatforms(Spark.platform)
-//        .map { x => println("### TaggedCentroid in iteration " + iteration + ": " + x ); x }
+      //        .map { x => println("### TaggedCentroid in iteration " + iteration + ": " + x ); x }
 
       // OPERATOR: Filter
       // input ID_10
@@ -258,7 +261,7 @@ object kmeansUnrolled {
         .filter(_.stable == true)
         .withName("Filter stable centroids")
         .withTargetPlatforms(Spark.platform)
-//        .map { x => println("### Stable centroids in iteration " + iteration + ": " + x ); x }
+      //        .map { x => println("### Stable centroids in iteration " + iteration + ": " + x ); x }
 
       // OPERATOR: UNION
       // input ID_11
@@ -272,7 +275,7 @@ object kmeansUnrolled {
         .filter(_.stable == false)
         .withName("Filter unstable centroids")
         .withTargetPlatforms(Spark.platform)
-//        .map { x => println("### unstable centroid in iteration " + iteration + ": " + x ); x }
+      //        .map { x => println("### unstable centroid in iteration " + iteration + ": " + x ); x }
 
       UnstablePoints += selectNearestOperator
         .mapJava(new TagStablePoints)
@@ -287,7 +290,7 @@ object kmeansUnrolled {
 
 
 
-    for (iteration <- m to iterations) {
+    for (iteration <- m+1 to iterations-1) {
 
       // OPERATOR: select nearest centroid
       // input ID_6
@@ -362,7 +365,10 @@ object kmeansUnrolled {
 
 
 
-    println("StableCentroids " + StableCentroids.count.collect())
+    println("StableCentroids " + StableCentroids
+      .count
+      .withTargetPlatforms(final_count_platform)
+      .collect())
 
     // Output of the Unions goes into Collection Sink
 

@@ -23,7 +23,7 @@ object kmeansUnrolled {
     val m = 15
 
     val first_iteration_platform = Spark.platform
-    val final_count_platform = Spark.platform
+    val final_count_platform = Java.platform
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)

@@ -23,15 +23,15 @@ object kmeansUnrolled {
 
 
 
-    if (args[1] == "mixed"){
+    if (args(1).equals("mixed")){
       val first_iteration_platform = Spark.platform
       val final_count_platform = Java.platform
-      val m = args[2]
-    } else if (args[1] == "spark") {
+      val m = args(2).toInt
+    } else if (args(1).equals("spark")) {
       val first_iteration_platform = Spark.platform
       val final_count_platform = Spark.platform
       val m = iterations
-    } else if (args[1] == "java") {
+    } else if (args(1).equals("java")) {
       val first_iteration_platform = Java.platform
       val final_count_platform = Java.platform
       val m = 0

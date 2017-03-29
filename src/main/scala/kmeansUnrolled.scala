@@ -21,20 +21,22 @@ object kmeansUnrolled {
     val iterations = 20
     val epsilon = 0.001
 
-    var first_iteration_platform, final_count_platform = null
+    val platforms = [Java.platform, Spark.platform]
+    var first_iteration_platform_id = 0
+    var final_count_platform_id = 0
     var m = 0
 
     if (args(1).equals("mixed")){
-      first_iteration_platform = Spark.platform
-      final_count_platform = Java.platform
+      first_iteration_platform_id = 1
+      final_count_platform_id = 0
       m = args(2).toInt
     } else if (args(1).equals("spark")) {
-      first_iteration_platform = Spark.platform
-      final_count_platform = Spark.platform
+      first_iteration_platform_id = 1
+      final_count_platform_id = 1
       m = iterations
     } else if (args(1).equals("java")) {
-      first_iteration_platform = Java.platform
-      final_count_platform = Java.platform
+      first_iteration_platform_id = 0
+      final_count_platform_id = 0
       m = 0
     }
 
@@ -148,14 +150,14 @@ object kmeansUnrolled {
         TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 0, false)
       }
       .withName("Create points")
-      .withTargetPlatforms(first_iteration_platform)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
       .loadCollection(for (i <- 1 to k) yield TaggedPointCounter(random.nextFloat(), random.nextFloat(), i, 0, false))
       .withName("Load random centroids")
-      .withTargetPlatforms(first_iteration_platform)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
     //      .map { x => println("### initial centroid in iteration ZERO: " + x ); x }
 
 
@@ -171,7 +173,7 @@ object kmeansUnrolled {
       .mapJava(new SelectNearestCentroidForPoint)
       .withBroadcast(initialCentroids, "centroids")
       .withName("Find nearest centroid - iteration zero")
-      .withTargetPlatforms(first_iteration_platform)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     // OPERATOR: Reduce, Average
     // input ID_0
@@ -182,7 +184,7 @@ object kmeansUnrolled {
       .withCardinalityEstimator(k)
       .map(_.average)
       .withName("Average points - iteration zero")
-      .withTargetPlatforms(first_iteration_platform)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
     //      .map { x => println("### new centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: MapPartition // finds out if new centroids are stable or not
@@ -194,7 +196,7 @@ object kmeansUnrolled {
       .mapJava(new TagStableCentroids)
       .withBroadcast(initialCentroids, "centroids")
       .withName("Tag stable centroids - iteration zero")
-      .withTargetPlatforms(first_iteration_platform)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     // OPERATOR: Filter - stable // return only the centroids that do not change anymore
     // input ID_4
@@ -202,7 +204,7 @@ object kmeansUnrolled {
     var StableCentroids = mapPartitionOperator_Zero
       .filter(_.stable == true)
       .withName("Filter stable centroids - iteration zero")
-      .withTargetPlatforms(first_iteration_platform)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
     //      .map { x => println("### stable centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: Filter - unstable // return only the centroids that still change and should be kept
@@ -215,7 +217,7 @@ object kmeansUnrolled {
     UnstableCentroids += mapPartitionOperator_Zero
       .filter(_.stable == false)
       .withName("Filter unstable centroids - iteration zero")
-      .withTargetPlatforms(first_iteration_platform)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
     //      .map { x => println("### unstable centroid in iteration ZERO: " + x ); x }
 
     // OPERATOR: Filter - filters out the points belonging to a stable centroid
@@ -228,7 +230,7 @@ object kmeansUnrolled {
       .withBroadcast(UnstableCentroids.last, "new_centroids")
       .filter(_.stable == false)
       .withName("Filter unstable points - iteration zero")
-      .withTargetPlatforms(first_iteration_platform)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
 
     // END iteration ZERO
@@ -384,7 +386,7 @@ object kmeansUnrolled {
 
     println("StableCentroids " + StableCentroids
       .count
-      .withTargetPlatforms(final_count_platform)
+      .withTargetPlatforms(platforms(final_count_platform_id))
       .collect())
 
     // Output of the Unions goes into Collection Sink

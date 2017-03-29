@@ -20,7 +20,7 @@ object kmeansUnrolled {
     val k = 25
     val iterations = 30
     val epsilon = 0.001
-    val m = 1
+    val m = 0
 
     val first_iteration_platform = Spark.platform
     val final_count_platform = Java.platform

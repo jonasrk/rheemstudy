@@ -20,12 +20,26 @@ object kmeansUnrolled {
     val k = 50
     val iterations = 20
     val epsilon = 0.001
-    val m = 10
 
-    args.foreach(println)
 
-    val first_iteration_platform = Spark.platform
-    val final_count_platform = Java.platform
+
+    if (args[1] == "mixed"){
+      val first_iteration_platform = Spark.platform
+      val final_count_platform = Java.platform
+      val m = args[2]
+    } else if (args[1] == "spark") {
+      val first_iteration_platform = Spark.platform
+      val final_count_platform = Spark.platform
+      val m = iterations
+    } else if (args[1] == "java") {
+      val first_iteration_platform = Java.platform
+      val final_count_platform = Java.platform
+      val m = 0
+    }
+
+
+
+
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)

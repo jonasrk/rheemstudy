@@ -21,20 +21,22 @@ object kmeansUnrolled {
     val iterations = 20
     val epsilon = 0.001
 
-
+    var first_iteration_platform = Java.platform
+    var final_count_platform = Java.platform
+    var m = 0
 
     if (args(1).equals("mixed")){
-      val first_iteration_platform = Spark.platform
-      val final_count_platform = Java.platform
-      val m = args(2).toInt
+      first_iteration_platform = Spark.platform
+      final_count_platform = Java.platform
+      m = args(2).toInt
     } else if (args(1).equals("spark")) {
-      val first_iteration_platform = Spark.platform
-      val final_count_platform = Spark.platform
-      val m = iterations
+      first_iteration_platform = Spark.platform
+      final_count_platform = Spark.platform
+      m = iterations
     } else if (args(1).equals("java")) {
-      val first_iteration_platform = Java.platform
-      val final_count_platform = Java.platform
-      val m = 0
+      first_iteration_platform = Java.platform
+      final_count_platform = Java.platform
+      m = 0
     }
 
 

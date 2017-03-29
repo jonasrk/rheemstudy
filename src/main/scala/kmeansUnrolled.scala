@@ -22,7 +22,7 @@ object kmeansUnrolled {
     val epsilon = 0.001
     val m = 10
 
-    args.foreach(println
+    args.foreach(println)
 
     val first_iteration_platform = Spark.platform
     val final_count_platform = Java.platform

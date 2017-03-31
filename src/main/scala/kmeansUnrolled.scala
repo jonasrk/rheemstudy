@@ -19,7 +19,7 @@ object kmeansUnrolled {
     val inputUrl = "hdfs://tenemhead2/data/2dpoints/kmeans_points_1m.txt"
     val k = 30
     val iterations = 25
-    val epsilon = 0.0001
+    val epsilon = 0.0005
 
     val platforms = Array(Java.platform, Spark.platform)
     var first_iteration_platform_id = 0

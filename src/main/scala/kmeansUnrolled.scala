@@ -16,10 +16,10 @@ object kmeansUnrolled {
   def main(args: Array[String]) {
 
     // Settings
-    val inputUrl = "hdfs://tenemhead2/data/2dpoints/kmeans_points_1m.txt"
-    val k = 30
-    val iterations = 25
-    val epsilon = 0.001
+    var inputUrl = "hdfs://tenemhead2/data/2dpoints/kmeans_points_1m.txt"
+    var k = 30
+    var iterations = 25
+    var epsilon = 0.001
 
     val platforms = Array(Java.platform, Spark.platform)
     var first_iteration_platform_id = 0
@@ -30,15 +30,26 @@ object kmeansUnrolled {
       first_iteration_platform_id = 1
       final_count_platform_id = 0
       m = args(1).toInt
+      k = args(2).toInt
+      iterations = args(3).toInt
+      epsilon = args(4).toFloat
     } else if (args(0).equals("spark")) {
       first_iteration_platform_id = 1
       final_count_platform_id = 1
       m = iterations
+      k = args(2).toInt
+      iterations = args(3).toInt
+      epsilon = args(4).toFloat
     } else if (args(0).equals("java")) {
       first_iteration_platform_id = 0
       final_count_platform_id = 0
       m = 0
+      k = args(2).toInt
+      iterations = args(3).toInt
+      epsilon = args(4).toFloat
     }
+
+    inputUrl = args(5)
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -363,10 +374,6 @@ object kmeansUnrolled {
         .withName("union")
         .withTargetPlatforms(Java.platform)
 
-      println("###: " + StableCentroids
-        .count
-        .withTargetPlatforms(Java.platform))
-
       UnstableCentroids += mapPartitionOperator
         .filter(_.stable == false)
         .withName("Filter unstable centroids")
@@ -385,15 +392,12 @@ object kmeansUnrolled {
 
 
 
-
-
-
-
-
-    println("StableCentroids " + StableCentroids
+    println("UnstablePoints " + UnstablePoints.last
       .count
       .withTargetPlatforms(platforms(final_count_platform_id))
       .collect())
+
+
 
     // Output of the Unions goes into Collection Sink
 

@@ -12,12 +12,6 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="Maven: org.qcri.rheem:rheem-core:0.4.0-SNAPSHOT" level="project" />
-    <orderEntry type="library" name="Maven: org.qcri.rheem:rheem-basic:0.4.0-SNAPSHOT" level="project" />
-    <orderEntry type="library" name="Maven: org.qcri.rheem:rheem-java:0.4.0-SNAPSHOT" level="project" />
-    <orderEntry type="library" name="Maven: org.qcri.rheem:rheem-spark:0.4.0-SNAPSHOT" level="project" />
-    <orderEntry type="library" name="Maven: org.qcri.rheem:rheem-api:0.4.0-SNAPSHOT" level="project" />
-    <orderEntry type="library" name="Maven: org.qcri.rheem:rheem-jdbc-template:0.4.0-SNAPSHOT" level="project" />
     <orderEntry type="module" module-name="rheem-core" />
     <orderEntry type="library" name="Maven: org.json:json:20160212" level="project" />
     <orderEntry type="library" name="Maven: org.yaml:snakeyaml:1.17" level="project" />
@@ -35,8 +29,10 @@
     <orderEntry type="module" module-name="rheem-basic" />
     <orderEntry type="module" module-name="rheem-java" />
     <orderEntry type="module" module-name="rheem-spark" />
-    <orderEntry type="module" module-name="rheem-api" />
+    <orderEntry type="module" module-name="rheem-sqlite3" />
     <orderEntry type="module" module-name="rheem-jdbc-template" />
+    <orderEntry type="library" name="Maven: org.xerial:sqlite-jdbc:3.8.11.2" level="project" />
+    <orderEntry type="module" module-name="rheem-api" />
     <orderEntry type="library" name="Maven: org.apache.spark:spark-core_2.10:1.6.2" level="project" />
     <orderEntry type="library" name="Maven: org.apache.avro:avro-mapred:hadoop2:1.7.7" level="project" />
     <orderEntry type="library" name="Maven: org.apache.avro:avro-ipc:1.7.7" level="project" />

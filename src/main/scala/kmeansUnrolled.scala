@@ -40,14 +40,6 @@ object kmeansUnrolled {
       m = 0
     }
 
-    println(args(0))
-    println("first_iteration_platform_id: " + first_iteration_platform_id)
-    println("final_count_platform_id: " + final_count_platform_id)
-    println("m: " + m)
-
-
-
-
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
       .withPlugin(Java.basicPlugin)
@@ -184,6 +176,7 @@ object kmeansUnrolled {
     // output ID_2
     var reduceAverage_Zero = selectNearestOperator_Zero
       .reduceByKey(_.cluster, _.add_points(_))
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .withName("Add up points - iteration zero")
       .withCardinalityEstimator(k)
       .map(_.average)
@@ -231,6 +224,7 @@ object kmeansUnrolled {
     var UnstablePoints = new ListBuffer[DataQuanta[TaggedPointCounter]]()
     UnstablePoints += selectNearestOperator_Zero
       .mapJava(new TagStablePoints)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .withBroadcast(UnstableCentroids.last, "new_centroids")
       .filter(_.stable == false)
       .withName("Filter unstable points - iteration zero")
@@ -259,6 +253,7 @@ object kmeansUnrolled {
       // output ID_8
       var reduceAverage = selectNearestOperator
         .reduceByKey(_.cluster, _.add_points(_))
+        .withTargetPlatforms(Spark.platform)
         .withName("Add up points")
         .withCardinalityEstimator(k)
         .map(_.average)
@@ -302,6 +297,7 @@ object kmeansUnrolled {
 
       UnstablePoints += selectNearestOperator
         .mapJava(new TagStablePoints)
+        .withTargetPlatforms(Spark.platform)
         .withBroadcast(UnstableCentroids.last, "new_centroids")
         .filter(_.stable == false)
         .withName("Filter unstable points")
@@ -331,6 +327,7 @@ object kmeansUnrolled {
       // output ID_8
       var reduceAverage = selectNearestOperator
         .reduceByKey(_.cluster, _.add_points(_))
+        .withTargetPlatforms(Java.platform)
         .withName("Add up points")
         .withCardinalityEstimator(k)
         .map(_.average)
@@ -366,6 +363,10 @@ object kmeansUnrolled {
         .withName("union")
         .withTargetPlatforms(Java.platform)
 
+      println("###: " + StableCentroids
+        .count
+        .withTargetPlatforms(Java.platform))
+
       UnstableCentroids += mapPartitionOperator
         .filter(_.stable == false)
         .withName("Filter unstable centroids")
@@ -374,6 +375,7 @@ object kmeansUnrolled {
 
       UnstablePoints += selectNearestOperator
         .mapJava(new TagStablePoints)
+        .withTargetPlatforms(Java.platform)
         .withBroadcast(UnstableCentroids.last, "new_centroids")
         .filter(_.stable == false)
         .withName("Filter unstable points")

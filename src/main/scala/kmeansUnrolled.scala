@@ -16,42 +16,34 @@ object kmeansUnrolled {
   def main(args: Array[String]) {
 
     // Settings
-    var inputUrl = "hdfs://tenemhead2/data/2dpoints/kmeans_points_1m.txt"
-    var k = 30
-    var iterations = 25
-    var epsilon = 0.001
+    var inputUrlPoints, inputUrlCentroids = ""
+    var k, iterations = -1
+    var epsilon = -0.1
 
     val platforms = Array(Java.platform, Spark.platform)
-    var first_iteration_platform_id = 0
-    var final_count_platform_id = 0
-    var m = 0
+    var first_iteration_platform_id, final_count_platform_id, m = 0
 
     if (args(0).equals("mixed")){
       first_iteration_platform_id = 1
       final_count_platform_id = 0
       m = args(1).toInt
-      k = args(2).toInt
-      iterations = args(3).toInt
-      epsilon = args(4).toFloat
     } else if (args(0).equals("spark")) {
       first_iteration_platform_id = 1
       final_count_platform_id = 1
       m = iterations
-      k = args(2).toInt
-      iterations = args(3).toInt
-      epsilon = args(4).toFloat
     } else if (args(0).equals("java")) {
       first_iteration_platform_id = 0
       final_count_platform_id = 0
       m = 0
-      k = args(2).toInt
-      iterations = args(3).toInt
-      epsilon = args(4).toFloat
     }
 
-    inputUrl = args(5)
+    k = args(2).toInt
+    iterations = args(3).toInt
+    epsilon = args(4).toFloat
+    inputUrlPoints = args(5)
+    inputUrlCentroids = args(6)
 
-    println(" args(0): " + args(0) + " iterations: " + iterations + " epsilon: " + epsilon + " inputUrl: " + inputUrl + " k: " + k)
+    println("\n\n### args(0): " + args(0) + " iterations: " + iterations + " epsilon: " + epsilon + " inputUrl: " + inputUrlPoints + " k: " + k + " inputUrlCentroids: " + inputUrlCentroids + "\n\n")
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -59,7 +51,7 @@ object kmeansUnrolled {
       .withPlugin(Spark.basicPlugin)
 
     val planBuilder = new PlanBuilder(rheemContext)
-      .withJobName(s"k-means ($inputUrl, k=$k, $iterations iterations)")
+      .withJobName(s"k-means ($inputUrlPoints, $inputUrlCentroids, $args(0), m=$m, epsilon=$epsilon k=$k, $iterations iterations)")
       .withUdfJarsOf(this.getClass)
 
     case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long, stable: Boolean) {
@@ -153,19 +145,24 @@ object kmeansUnrolled {
     // input centroids
     // Read and parse the input file(s).
     val points = planBuilder
-      .readTextFile(inputUrl).withName("Read file")
+      .readTextFile(inputUrlPoints).withName("Read points file")
       .map { line =>
         val fields = line.split(",")
         TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, 0, 0, false)
       }
-      .withName("Create points")
+      .withName("Load points from hdfs")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
-      .loadCollection(for (i <- 1 to k) yield TaggedPointCounter(random.nextFloat(), random.nextFloat(), i, 0, false))
-      .withName("Load random centroids")
+      .readTextFile(inputUrlCentroids)
+      .withName("Read centroids file")
+      .map { line =>
+        val fields = line.split(",")
+        TaggedPointCounter(fields(0).toDouble, fields(1).toDouble, fields(2).toInt, 0, false)
+      }
+      .withName("Load centroids from hdfs")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
     //      .map { x => println("### initial centroid in iteration ZERO: " + x ); x }
 
@@ -246,152 +243,84 @@ object kmeansUnrolled {
 
     // END iteration ZERO
 
+    def one_iteration(platform_id: Int)={
+      // OPERATOR: select nearest centroid
+      // input ID_6
+      // broadcast_in ID_b1
+      // output ID_7
+      var selectNearestOperator = UnstablePoints.last
+        .mapJava(new SelectNearestCentroidForPoint)
+        .withBroadcast(UnstableCentroids.last, "centroids")
+        .withName("Find nearest centroid")
+        .withTargetPlatforms(platforms(platform_id))
+      //        .map { x => println("### find nearest in iteration " + iteration + ": " + x ); x }
+
+      // OPERATOR: Reduce, Average
+      // input ID_7
+      // output ID_8
+      var reduceAverage = selectNearestOperator
+        .reduceByKey(_.cluster, _.add_points(_))
+        .withTargetPlatforms(platforms(platform_id))
+        .withName("Add up points")
+        .withCardinalityEstimator(k)
+        .map(_.average)
+        .withName("Average points")
+        .withTargetPlatforms(platforms(platform_id))
+
+
+      // OPERATOR: MapPartition
+      // input ID_9
+      // broadcast_in ID_b2
+      // output ID_10
+      var mapPartitionOperator = reduceAverage
+        .mapJava(new TagStableCentroids)
+        .withBroadcast(UnstableCentroids.last, "centroids")
+        .withName("Tag stable centroids")
+        .withTargetPlatforms(platforms(platform_id))
+      //        .map { x => println("### TaggedCentroid in iteration " + iteration + ": " + x ); x }
+
+      // OPERATOR: Filter
+      // input ID_10
+      // output ID_12
+      var NewStableCentroids = mapPartitionOperator
+        .filter(_.stable == true)
+        .withName("Filter stable centroids")
+        .withTargetPlatforms(platforms(platform_id))
+      //        .map { x => println("### Stable centroids in iteration " + iteration + ": " + x ); x }
+
+      // OPERATOR: UNION
+      // input ID_11
+      // input ID_12
+      StableCentroids = StableCentroids
+        .union(NewStableCentroids)
+        .withName("union")
+        .withTargetPlatforms(platforms(platform_id))
+
+      UnstableCentroids += mapPartitionOperator
+        .filter(_.stable == false)
+        .withName("Filter unstable centroids")
+        .withTargetPlatforms(platforms(platform_id))
+      //        .map { x => println("### unstable centroid in iteration " + iteration + ": " + x ); x }
+
+      UnstablePoints += selectNearestOperator
+        .mapJava(new TagStablePoints)
+        .withTargetPlatforms(platforms(platform_id))
+        .withBroadcast(UnstableCentroids.last, "new_centroids")
+        .filter(_.stable == false)
+        .withName("Filter unstable points")
+        .withTargetPlatforms(platforms(platform_id))
+      // END iteration 1..n
+    }
+
 
     // START iteration 1..n
     for (iteration <- 1 to m) {
-
-      // OPERATOR: select nearest centroid
-      // input ID_6
-      // broadcast_in ID_b1
-      // output ID_7
-      var selectNearestOperator = UnstablePoints.last
-        .mapJava(new SelectNearestCentroidForPoint)
-        .withBroadcast(UnstableCentroids.last, "centroids")
-        .withName("Find nearest centroid")
-        .withTargetPlatforms(Spark.platform)
-      //        .map { x => println("### find nearest in iteration " + iteration + ": " + x ); x }
-
-      // OPERATOR: Reduce, Average
-      // input ID_7
-      // output ID_8
-      var reduceAverage = selectNearestOperator
-        .reduceByKey(_.cluster, _.add_points(_))
-        .withTargetPlatforms(Spark.platform)
-        .withName("Add up points")
-        .withCardinalityEstimator(k)
-        .map(_.average)
-        .withName("Average points")
-        .withTargetPlatforms(Spark.platform)
-
-
-      // OPERATOR: MapPartition
-      // input ID_9
-      // broadcast_in ID_b2
-      // output ID_10
-      var mapPartitionOperator = reduceAverage
-        .mapJava(new TagStableCentroids)
-        .withBroadcast(UnstableCentroids.last, "centroids")
-        .withName("Tag stable centroids")
-        .withTargetPlatforms(Spark.platform)
-      //        .map { x => println("### TaggedCentroid in iteration " + iteration + ": " + x ); x }
-
-      // OPERATOR: Filter
-      // input ID_10
-      // output ID_12
-      var NewStableCentroids = mapPartitionOperator
-        .filter(_.stable == true)
-        .withName("Filter stable centroids")
-        .withTargetPlatforms(Spark.platform)
-      //        .map { x => println("### Stable centroids in iteration " + iteration + ": " + x ); x }
-
-      // OPERATOR: UNION
-      // input ID_11
-      // input ID_12
-      StableCentroids = StableCentroids
-        .union(NewStableCentroids)
-        .withName("union")
-        .withTargetPlatforms(Spark.platform)
-
-      UnstableCentroids += mapPartitionOperator
-        .filter(_.stable == false)
-        .withName("Filter unstable centroids")
-        .withTargetPlatforms(Spark.platform)
-      //        .map { x => println("### unstable centroid in iteration " + iteration + ": " + x ); x }
-
-      UnstablePoints += selectNearestOperator
-        .mapJava(new TagStablePoints)
-        .withTargetPlatforms(Spark.platform)
-        .withBroadcast(UnstableCentroids.last, "new_centroids")
-        .filter(_.stable == false)
-        .withName("Filter unstable points")
-        .withTargetPlatforms(Spark.platform)
-      // END iteration 1..n
+      one_iteration(1)
     }
-
-
-
-
 
     for (iteration <- m+1 to iterations-1) {
-
-      // OPERATOR: select nearest centroid
-      // input ID_6
-      // broadcast_in ID_b1
-      // output ID_7
-      var selectNearestOperator = UnstablePoints.last
-        .mapJava(new SelectNearestCentroidForPoint)
-        .withBroadcast(UnstableCentroids.last, "centroids")
-        .withName("Find nearest centroid")
-        .withTargetPlatforms(Java.platform)
-      //        .map { x => println("### find nearest in iteration " + iteration + ": " + x ); x }
-
-      // OPERATOR: Reduce, Average
-      // input ID_7
-      // output ID_8
-      var reduceAverage = selectNearestOperator
-        .reduceByKey(_.cluster, _.add_points(_))
-        .withTargetPlatforms(Java.platform)
-        .withName("Add up points")
-        .withCardinalityEstimator(k)
-        .map(_.average)
-        .withName("Average points")
-        .withTargetPlatforms(Java.platform)
-
-
-      // OPERATOR: MapPartition
-      // input ID_9
-      // broadcast_in ID_b2
-      // output ID_10
-      var mapPartitionOperator = reduceAverage
-        .mapJava(new TagStableCentroids)
-        .withBroadcast(UnstableCentroids.last, "centroids")
-        .withName("Tag stable centroids")
-        .withTargetPlatforms(Java.platform)
-      //        .map { x => println("### TaggedCentroid in iteration " + iteration + ": " + x ); x }
-
-      // OPERATOR: Filter
-      // input ID_10
-      // output ID_12
-      var NewStableCentroids = mapPartitionOperator
-        .filter(_.stable == true)
-        .withName("Filter stable centroids")
-        .withTargetPlatforms(Java.platform)
-      //        .map { x => println("### Stable centroids in iteration " + iteration + ": " + x ); x }
-
-      // OPERATOR: UNION
-      // input ID_11
-      // input ID_12
-      StableCentroids = StableCentroids
-        .union(NewStableCentroids)
-        .withName("union")
-        .withTargetPlatforms(Java.platform)
-
-      UnstableCentroids += mapPartitionOperator
-        .filter(_.stable == false)
-        .withName("Filter unstable centroids")
-        .withTargetPlatforms(Java.platform)
-      //        .map { x => println("### unstable centroid in iteration " + iteration + ": " + x ); x }
-
-      UnstablePoints += selectNearestOperator
-        .mapJava(new TagStablePoints)
-        .withTargetPlatforms(Java.platform)
-        .withBroadcast(UnstableCentroids.last, "new_centroids")
-        .filter(_.stable == false)
-        .withName("Filter unstable points")
-        .withTargetPlatforms(Java.platform)
-      // END iteration 1..n
+      one_iteration(0)
     }
-
 
 
     println("UnstablePoints " + UnstablePoints.last

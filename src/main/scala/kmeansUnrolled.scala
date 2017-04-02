@@ -50,8 +50,9 @@ object kmeansUnrolled {
       .withPlugin(Java.basicPlugin)
       .withPlugin(Spark.basicPlugin)
 
+    var s = args(0)
     val planBuilder = new PlanBuilder(rheemContext)
-      .withJobName(s"k-means ($inputUrlPoints, $inputUrlCentroids, $args(0), m=$m, epsilon=$epsilon k=$k, $iterations iterations)")
+      .withJobName(s"k-means ($inputUrlPoints, $inputUrlCentroids, $s, m=$m, epsilon=$epsilon k=$k, $iterations iterations)")
       .withUdfJarsOf(this.getClass)
 
     case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long, stable: Boolean) {

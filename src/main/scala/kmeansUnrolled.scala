@@ -51,6 +51,8 @@ object kmeansUnrolled {
 
     inputUrl = args(5)
 
+    println(" args(0): " + args(0) + " iterations: " + iterations + " epsilon: " + epsilon + " inputUrl: " + inputUrl + " k: " + k)
+
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
       .withPlugin(Java.basicPlugin)

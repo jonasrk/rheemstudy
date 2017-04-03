@@ -141,18 +141,18 @@ object kmeansUnrolled {
       }
     }
 
-//    class CountUnstablePoints extends ExtendedSerializableFunction[Long, CountWithIteration] {
-//
-//      var iteration: Iterable[Int] = _
-//
-//      override def open(executionCtx: ExecutionContext) = {
-//        iteration = executionCtx.getBroadcast[Int]("iteration_id")
-//      }
-//
-//      override def apply(count: Long): CountWithIteration = {
-//          return new CountWithIteration(count, iteration.last)
-//      }
-//    }
+    class AnnotateUnstablePointsCounts extends ExtendedSerializableFunction[java.lang.Long, CountWithIteration]  {
+
+      var iteration: Iterable[Int] = _
+
+      override def open(executionCtx: ExecutionContext) = {
+        iteration = executionCtx.getBroadcast[Int]("iteration_id")
+      }
+
+      override def apply(count: java.lang.Long): CountWithIteration = {
+          return new CountWithIteration(count, iteration.last)
+      }
+    }
 
 
     // Read and parse the input file(s).
@@ -222,7 +222,21 @@ object kmeansUnrolled {
       .withName("Filter unstable points - iteration zero")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
-//    var UnstablePointsCount = new ListBuffer[DataQuanta[CountWithIteration]]()
+    var iteration_zero_list = planBuilder
+      .loadCollection(List(0))
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
+
+    var UnstablePointsCount = new ListBuffer[DataQuanta[CountWithIteration]]()
+    UnstablePointsCount += UnstablePoints.last
+      .count
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
+      .mapJava(new AnnotateUnstablePointsCounts)
+      .withBroadcast(iteration_zero_list, "iteration_id")
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
+
+    var AllUnstablePointsCounts = UnstablePointsCount.last
+
+
 
     // END iteration ZERO
 
@@ -271,15 +285,20 @@ object kmeansUnrolled {
         .withName("Filter unstable points")
         .withTargetPlatforms(platforms(platform_id))
 
-//      var iteration_list = new ListBuffer[Int]
-//      iteration_list += iteration
-//
-//      UnstablePointsCount += UnstablePoints.last
-//        .count
-//        .withTargetPlatforms(platforms(platform_id))
-//        .mapJava(new CountUnstablePoints)
-//        .withBroadcast(iteration_list, "iteration_id")
-//        .withTargetPlatforms(platforms(platform_id))
+      var iteration_list = planBuilder
+          .loadCollection(List(iteration))
+        .withTargetPlatforms(platforms(platform_id))
+
+      UnstablePointsCount += UnstablePoints.last
+        .count
+        .withTargetPlatforms(platforms(platform_id))
+        .mapJava(new AnnotateUnstablePointsCounts)
+        .withBroadcast(iteration_list, "iteration_id")
+        .withTargetPlatforms(platforms(platform_id))
+
+      AllUnstablePointsCounts = AllUnstablePointsCounts
+        .union(UnstablePointsCount.last)
+        .withTargetPlatforms(platforms(platform_id))
     }
 
     // START iteration 1..n
@@ -290,8 +309,7 @@ object kmeansUnrolled {
       one_iteration(0, iteration) // java
     }
 
-    println("UnstablePoints " + UnstablePoints.last
-      .count
+    println("UnstablePoints " + AllUnstablePointsCounts
       .withTargetPlatforms(platforms(final_count_platform_id))
       .collect())
   }

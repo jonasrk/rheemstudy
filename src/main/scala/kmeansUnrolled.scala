@@ -150,7 +150,7 @@ object kmeansUnrolled {
       }
 
       override def apply(count: java.lang.Long): CountWithIteration = {
-          return new CountWithIteration(count, iteration.last)
+        return new CountWithIteration(count, iteration.last)
       }
     }
 
@@ -286,7 +286,7 @@ object kmeansUnrolled {
         .withTargetPlatforms(platforms(platform_id))
 
       var iteration_list = planBuilder
-          .loadCollection(List(iteration))
+        .loadCollection(List(iteration))
         .withTargetPlatforms(platforms(platform_id))
 
       UnstablePointsCount += UnstablePoints.last

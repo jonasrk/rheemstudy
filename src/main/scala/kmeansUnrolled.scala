@@ -23,6 +23,10 @@ object kmeansUnrolled {
     val platforms = Array(Java.platform, Spark.platform)
     var first_iteration_platform_id, final_count_platform_id, m = 0
 
+    iterations = args(1).toInt
+    epsilon = args(2).toFloat
+    inputUrlPoints = args(3)
+    inputUrlCentroids = args(4)
 
     val platform = args(0)
     if (platform.equals("mixed")){
@@ -39,12 +43,7 @@ object kmeansUnrolled {
       m = 0
     }
 
-    iterations = args(1).toInt
-    epsilon = args(2).toFloat
-    inputUrlPoints = args(3)
-    inputUrlCentroids = args(4)
-
-    println("\n\n### platform: " + platform + " iterations: " + iterations + " epsilon: " + epsilon + " inputUrl: " + inputUrlPoints + " inputUrlCentroids: " + inputUrlCentroids + "\n\n")
+    println("\n\n### platform: " + platform + ", iterations: " + iterations + ", m: " + m + ", epsilon: " + epsilon + ", inputUrl: " + inputUrlPoints + ", inputUrlCentroids: " + inputUrlCentroids + "\n\n")
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)

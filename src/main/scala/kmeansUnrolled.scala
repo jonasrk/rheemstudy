@@ -17,7 +17,7 @@ object kmeansUnrolled {
 
     // Settings
     var inputUrlPoints, inputUrlCentroids = ""
-    var k, iterations = -1
+    var iterations = -1
     var epsilon = -0.1
 
     val platforms = Array(Java.platform, Spark.platform)
@@ -28,7 +28,7 @@ object kmeansUnrolled {
     if (platform.equals("mixed")){
       first_iteration_platform_id = 1
       final_count_platform_id = 0
-      m = args(1).toInt
+      m = args(5).toInt
     } else if (platform.equals("spark")) {
       first_iteration_platform_id = 1
       final_count_platform_id = 1
@@ -39,16 +39,12 @@ object kmeansUnrolled {
       m = 0
     }
 
-    k = args(2).toInt
-    iterations = args(3).toInt
-    epsilon = args(4).toFloat
-    inputUrlPoints = args(5)
-    inputUrlCentroids = args(6)
+    iterations = args(1).toInt
+    epsilon = args(2).toFloat
+    inputUrlPoints = args(3)
+    inputUrlCentroids = args(4)
 
-    println("\n\n### platform: " + platform + " iterations: " + iterations + " epsilon: " + epsilon + " inputUrl: " + inputUrlPoints + " k: " + k + " inputUrlCentroids: " + inputUrlCentroids + "\n\n")
-
-
-
+    println("\n\n### platform: " + platform + " iterations: " + iterations + " epsilon: " + epsilon + " inputUrl: " + inputUrlPoints + " inputUrlCentroids: " + inputUrlCentroids + "\n\n")
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
@@ -56,9 +52,8 @@ object kmeansUnrolled {
       .withPlugin(Spark.basicPlugin)
 
     val planBuilder = new PlanBuilder(rheemContext)
-      .withJobName(s"k-means ($inputUrlPoints, $inputUrlCentroids, $platform, m=$m, epsilon=$epsilon k=$k, $iterations iterations)")
+      .withJobName(s"k-means ($inputUrlPoints, $inputUrlCentroids, $platform, m=$m, epsilon=$epsilon , $iterations iterations)")
       .withUdfJarsOf(this.getClass)
-
 
     case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long, stable: Boolean) {
       def add_points(that: TaggedPointCounter) = TaggedPointCounter(this.x + that.x, this.y + that.y, this.cluster, this.count + that.count, false)
@@ -160,8 +155,6 @@ object kmeansUnrolled {
 //    }
 
 
-    // input points
-    // input centroids
     // Read and parse the input file(s).
     val points = planBuilder
       .readTextFile(inputUrlPoints).withName("Read points file")
@@ -172,7 +165,6 @@ object kmeansUnrolled {
       .withName("Load points from hdfs")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
-    // Create initial centroids.
     val random = new Random
     val initialCentroids = planBuilder
       .readTextFile(inputUrlCentroids)
@@ -183,41 +175,25 @@ object kmeansUnrolled {
       }
       .withName("Load centroids from hdfs")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
-    //      .map { x => println("### initial centroid in iteration ZERO: " + x ); x }
 
 
     // START iteration ZERO
 
-
-    // OPERATOR: select nearest centroid
-    // input points
-    // broadcast_in centroids
-    // output ID_0
-    // output ID_1
     var selectNearestOperator_Zero = points
       .mapJava(new SelectNearestCentroidForPoint)
       .withBroadcast(initialCentroids, "centroids")
       .withName("Find nearest centroid - iteration zero")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
-    // OPERATOR: Reduce, Average
-    // input ID_0
-    // output ID_2
     var reduceAverage_Zero = selectNearestOperator_Zero
       .reduceByKey(_.cluster, _.add_points(_))
       .withTargetPlatforms(platforms(first_iteration_platform_id))
       .withName("Add up points - iteration zero")
-      .withCardinalityEstimator(k)
       .map(_.average)
       .withName("Average points - iteration zero")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
-    //      .map { x => println("### new centroid in iteration ZERO: " + x ); x }
 
-    // OPERATOR: MapPartition // finds out if new centroids are stable or not
-    // input ID_3
-    // broadcast_in centroids
-    // output ID_4
-    // output ID_5
+    // OPERATOR: Map // finds out if new centroids are stable or not
     var mapPartitionOperator_Zero = reduceAverage_Zero
       .mapJava(new TagStableCentroids)
       .withBroadcast(initialCentroids, "centroids")
@@ -225,31 +201,18 @@ object kmeansUnrolled {
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     // OPERATOR: Filter - stable // return only the centroids that do not change anymore
-    // input ID_4
-    // output ID_11
     var StableCentroids = mapPartitionOperator_Zero
       .filter(_.stable == true)
       .withName("Filter stable centroids - iteration zero")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
-    //      .map { x => println("### stable centroid in iteration ZERO: " + x ); x }
 
-    // OPERATOR: Filter - unstable // return only the centroids that still change and should be kept
-    // input ID_5
-    // broadcast_out ID_b0
-    // broadcast_out ID_b1
-    // broadcast_out ID_b2
     // Use ListBuffers to add operators in every loop iteration
     var UnstableCentroids = new ListBuffer[DataQuanta[TaggedPointCounter]]()
     UnstableCentroids += mapPartitionOperator_Zero
       .filter(_.stable == false)
       .withName("Filter unstable centroids - iteration zero")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
-    //      .map { x => println("### unstable centroid in iteration ZERO: " + x ); x }
 
-    // OPERATOR: Filter - filters out the points belonging to a stable centroid
-    // input ID_1
-    // broadcast_in ID_b0
-    // output ID_6 (remaining points)
     var UnstablePoints = new ListBuffer[DataQuanta[TaggedPointCounter]]()
     UnstablePoints += selectNearestOperator_Zero
       .mapJava(new TagStablePoints)
@@ -259,58 +222,37 @@ object kmeansUnrolled {
       .withName("Filter unstable points - iteration zero")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
-    var UnstablePointsCount = new ListBuffer[DataQuanta[CountWithIteration]]()
+//    var UnstablePointsCount = new ListBuffer[DataQuanta[CountWithIteration]]()
 
     // END iteration ZERO
 
     def one_iteration(platform_id: Int, iteration: Int)={
-      // OPERATOR: select nearest centroid
-      // input ID_6
-      // broadcast_in ID_b1
-      // output ID_7
+
       var selectNearestOperator = UnstablePoints.last
         .mapJava(new SelectNearestCentroidForPoint)
         .withBroadcast(UnstableCentroids.last, "centroids")
         .withName("Find nearest centroid")
         .withTargetPlatforms(platforms(platform_id))
-      //        .map { x => println("### find nearest in iteration " + iteration + ": " + x ); x }
 
-      // OPERATOR: Reduce, Average
-      // input ID_7
-      // output ID_8
       var reduceAverage = selectNearestOperator
         .reduceByKey(_.cluster, _.add_points(_))
         .withTargetPlatforms(platforms(platform_id))
         .withName("Add up points")
-        .withCardinalityEstimator(k)
         .map(_.average)
         .withName("Average points")
         .withTargetPlatforms(platforms(platform_id))
 
-
-      // OPERATOR: MapPartition
-      // input ID_9
-      // broadcast_in ID_b2
-      // output ID_10
       var mapPartitionOperator = reduceAverage
         .mapJava(new TagStableCentroids)
         .withBroadcast(UnstableCentroids.last, "centroids")
         .withName("Tag stable centroids")
         .withTargetPlatforms(platforms(platform_id))
-      //        .map { x => println("### TaggedCentroid in iteration " + iteration + ": " + x ); x }
 
-      // OPERATOR: Filter
-      // input ID_10
-      // output ID_12
       var NewStableCentroids = mapPartitionOperator
         .filter(_.stable == true)
         .withName("Filter stable centroids")
         .withTargetPlatforms(platforms(platform_id))
-      //        .map { x => println("### Stable centroids in iteration " + iteration + ": " + x ); x }
 
-      // OPERATOR: UNION
-      // input ID_11
-      // input ID_12
       StableCentroids = StableCentroids
         .union(NewStableCentroids)
         .withName("union")
@@ -320,7 +262,6 @@ object kmeansUnrolled {
         .filter(_.stable == false)
         .withName("Filter unstable centroids")
         .withTargetPlatforms(platforms(platform_id))
-      //        .map { x => println("### unstable centroid in iteration " + iteration + ": " + x ); x }
 
       UnstablePoints += selectNearestOperator
         .mapJava(new TagStablePoints)
@@ -329,7 +270,6 @@ object kmeansUnrolled {
         .filter(_.stable == false)
         .withName("Filter unstable points")
         .withTargetPlatforms(platforms(platform_id))
-      // END iteration 1..n
 
 //      var iteration_list = new ListBuffer[Int]
 //      iteration_list += iteration
@@ -342,26 +282,17 @@ object kmeansUnrolled {
 //        .withTargetPlatforms(platforms(platform_id))
     }
 
-
     // START iteration 1..n
     for (iteration <- 1 to m) {
       one_iteration(1, iteration) // spark
     }
-
     for (iteration <- m+1 to iterations-1) {
       one_iteration(0, iteration) // java
     }
-
 
     println("UnstablePoints " + UnstablePoints.last
       .count
       .withTargetPlatforms(platforms(final_count_platform_id))
       .collect())
-
-
-
-    // Output of the Unions goes into Collection Sink
-
-
   }
 }

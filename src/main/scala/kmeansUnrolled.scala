@@ -23,15 +23,17 @@ object kmeansUnrolled {
     val platforms = Array(Java.platform, Spark.platform)
     var first_iteration_platform_id, final_count_platform_id, m = 0
 
-    if (args(0).equals("mixed")){
+
+    val platform = args(0)
+    if (platform.equals("mixed")){
       first_iteration_platform_id = 1
       final_count_platform_id = 0
       m = args(1).toInt
-    } else if (args(0).equals("spark")) {
+    } else if (platform.equals("spark")) {
       first_iteration_platform_id = 1
       final_count_platform_id = 1
       m = iterations
-    } else if (args(0).equals("java")) {
+    } else if (platform.equals("java")) {
       first_iteration_platform_id = 0
       final_count_platform_id = 0
       m = 0
@@ -43,17 +45,20 @@ object kmeansUnrolled {
     inputUrlPoints = args(5)
     inputUrlCentroids = args(6)
 
-    println("\n\n### args(0): " + args(0) + " iterations: " + iterations + " epsilon: " + epsilon + " inputUrl: " + inputUrlPoints + " k: " + k + " inputUrlCentroids: " + inputUrlCentroids + "\n\n")
+    println("\n\n### platform: " + platform + " iterations: " + iterations + " epsilon: " + epsilon + " inputUrl: " + inputUrlPoints + " k: " + k + " inputUrlCentroids: " + inputUrlCentroids + "\n\n")
+
+
+
 
     // Get a plan builder.
     val rheemContext = new RheemContext(new Configuration)
       .withPlugin(Java.basicPlugin)
       .withPlugin(Spark.basicPlugin)
 
-    var s = args(0)
     val planBuilder = new PlanBuilder(rheemContext)
-      .withJobName(s"k-means ($inputUrlPoints, $inputUrlCentroids, $s, m=$m, epsilon=$epsilon k=$k, $iterations iterations)")
+      .withJobName(s"k-means ($inputUrlPoints, $inputUrlCentroids, $platform, m=$m, epsilon=$epsilon k=$k, $iterations iterations)")
       .withUdfJarsOf(this.getClass)
+
 
     case class TaggedPointCounter(x: Double, y: Double, cluster: Int, count: Long, stable: Boolean) {
       def add_points(that: TaggedPointCounter) = TaggedPointCounter(this.x + that.x, this.y + that.y, this.cluster, this.count + that.count, false)
@@ -61,8 +66,7 @@ object kmeansUnrolled {
       def average = TaggedPointCounter(x / count, y / count, cluster, 0, false)
     }
 
-    case class CountWithIteration(count: Long, iteration: Int) {
-    }
+    case class CountWithIteration(count: Long, iteration: Int) {}
 
     // Declare UDF to select centroid for each data point.
     class SelectNearestCentroidForPoint extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
@@ -142,19 +146,18 @@ object kmeansUnrolled {
       }
     }
 
-    // Declare UDF to select centroid for each data point.
-    class CountUnstablePoints extends ExtendedSerializableFunction[Long, CountWithIteration] {
-
-      var iteration: Iterable[Int] = _
-
-      override def open(executionCtx: ExecutionContext) = {
-        iteration = executionCtx.getBroadcast[Int]("iteration_id")
-      }
-
-      override def apply(count: Long): CountWithIteration = {
-          return new CountWithIteration(count, iteration.last)
-      }
-    }
+//    class CountUnstablePoints extends ExtendedSerializableFunction[Long, CountWithIteration] {
+//
+//      var iteration: Iterable[Int] = _
+//
+//      override def open(executionCtx: ExecutionContext) = {
+//        iteration = executionCtx.getBroadcast[Int]("iteration_id")
+//      }
+//
+//      override def apply(count: Long): CountWithIteration = {
+//          return new CountWithIteration(count, iteration.last)
+//      }
+//    }
 
 
     // input points
@@ -328,15 +331,15 @@ object kmeansUnrolled {
         .withTargetPlatforms(platforms(platform_id))
       // END iteration 1..n
 
-      var iteration_list = new ListBuffer[Int]
-      iteration_list += iteration
-
-      UnstablePointsCount += UnstablePoints.last
-        .count
-        .withTargetPlatforms(platforms(platform_id))
-        .mapJava(new CountUnstablePoints)
-        .withBroadcast(iteration_list, "iteration_id")
-        .withTargetPlatforms(platforms(platform_id))
+//      var iteration_list = new ListBuffer[Int]
+//      iteration_list += iteration
+//
+//      UnstablePointsCount += UnstablePoints.last
+//        .count
+//        .withTargetPlatforms(platforms(platform_id))
+//        .mapJava(new CountUnstablePoints)
+//        .withBroadcast(iteration_list, "iteration_id")
+//        .withTargetPlatforms(platforms(platform_id))
     }
 
 

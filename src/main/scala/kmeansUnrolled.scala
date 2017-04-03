@@ -61,6 +61,9 @@ object kmeansUnrolled {
       def average = TaggedPointCounter(x / count, y / count, cluster, 0, false)
     }
 
+    case class CountWithIteration(count: Long, iteration: Int) {
+    }
+
     // Declare UDF to select centroid for each data point.
     class SelectNearestCentroidForPoint extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
 
@@ -85,7 +88,6 @@ object kmeansUnrolled {
       }
     }
 
-    // Declare UDF to select centroid for each data point.
     class TagStableCentroids extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
 
       /** Keeps the broadcasted centroids. */
@@ -113,7 +115,6 @@ object kmeansUnrolled {
       }
     }
 
-    // Declare UDF to select centroid for each data point.
     class TagStablePoints extends ExtendedSerializableFunction[TaggedPointCounter, TaggedPointCounter] {
 
       /** Keeps the broadcasted centroids. */
@@ -138,6 +139,20 @@ object kmeansUnrolled {
           return new TaggedPointCounter(point.x, point.y, point.cluster, 1, true)
         }
 
+      }
+    }
+
+    // Declare UDF to select centroid for each data point.
+    class CountUnstablePoints extends ExtendedSerializableFunction[Long, CountWithIteration] {
+
+      var iteration: Iterable[Int] = _
+
+      override def open(executionCtx: ExecutionContext) = {
+        iteration = executionCtx.getBroadcast[Int]("iteration_id")
+      }
+
+      override def apply(count: Long): CountWithIteration = {
+          return new CountWithIteration(count, iteration.last)
       }
     }
 
@@ -241,10 +256,11 @@ object kmeansUnrolled {
       .withName("Filter unstable points - iteration zero")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
+    var UnstablePointsCount = new ListBuffer[DataQuanta[CountWithIteration]]()
 
     // END iteration ZERO
 
-    def one_iteration(platform_id: Int)={
+    def one_iteration(platform_id: Int, iteration: Int)={
       // OPERATOR: select nearest centroid
       // input ID_6
       // broadcast_in ID_b1
@@ -311,16 +327,26 @@ object kmeansUnrolled {
         .withName("Filter unstable points")
         .withTargetPlatforms(platforms(platform_id))
       // END iteration 1..n
+
+      var iteration_list = new ListBuffer[Int]
+      iteration_list += iteration
+
+      UnstablePointsCount += UnstablePoints.last
+        .count
+        .withTargetPlatforms(platforms(platform_id))
+        .mapJava(new CountUnstablePoints)
+        .withBroadcast(iteration_list, "iteration_id")
+        .withTargetPlatforms(platforms(platform_id))
     }
 
 
     // START iteration 1..n
     for (iteration <- 1 to m) {
-      one_iteration(1)
+      one_iteration(1, iteration) // spark
     }
 
     for (iteration <- m+1 to iterations-1) {
-      one_iteration(0)
+      one_iteration(0, iteration) // java
     }
 
 

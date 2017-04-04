@@ -36,7 +36,7 @@ object kmeansUnrolled {
     } else if (platform.equals("spark")) {
       first_iteration_platform_id = 1
       final_count_platform_id = 1
-      m = iterations
+      m = iterations - 1
     } else if (platform.equals("java")) {
       first_iteration_platform_id = 0
       final_count_platform_id = 0

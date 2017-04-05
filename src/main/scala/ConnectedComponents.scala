@@ -10,6 +10,7 @@ import org.qcri.rheem.java.Java
 import org.qcri.rheem.spark.Spark
 
 import scala.collection.JavaConversions._
+import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.util.Random
 
@@ -78,33 +79,74 @@ object ConnectedComponents {
     // new list of node objects
 
 
-    case class NodeWithNeighbours(string: String) {
-      val id: Int = 0
+    case class NodeWithNeighbours(name: String, id: Int) {
+      var neighbours = new ArrayBuffer[String]
+      def add_neighbour(name: String): Unit ={
+        neighbours += name
+      }
     }
 
-    var NodesWithNeighbours = scala.collection.mutable.Map[NodeWithNeighbours, String]()
+    var NodesWithNeighbours = new ArrayBuffer[NodeWithNeighbours]()
     
     // for edge in list
 
+    var id = 0;
+
     for (edge <- parsed_edges){
 
-      val node = NodeWithNeighbours(edge._1)
-      NodesWithNeighbours += (node -> edge._2)
-      val node2 = NodeWithNeighbours(edge._2)
-      NodesWithNeighbours += (node2 -> edge._1)
+
+      val node = NodeWithNeighbours(edge._1, id)
+      node.add_neighbour(edge._2)
+      NodesWithNeighbours += node
+      val node2 = NodeWithNeighbours(edge._2, id+1)
+      node2.add_neighbour(edge._1)
+      NodesWithNeighbours += node2
+
+      id = id + 2
 
 
     }
 
-    println(NodesWithNeighbours)
+    var NodesWithNeighboursCollection = planBuilder.loadCollection(NodesWithNeighbours)
+    var NodesWithNeighboursCollection2 = planBuilder.loadCollection(NodesWithNeighbours)
 
-    // give every node an id
+    class SelectMinimumIDofNeighbours extends ExtendedSerializableFunction[NodeWithNeighbours, NodeWithNeighbours] {
+
+      /** Keeps the broadcasted centroids. */
+      var neighbour_nodes:  Iterable[NodeWithNeighbours] = _
+
+      override def open(executionCtx: ExecutionContext) = {
+        neighbour_nodes = executionCtx.getBroadcast[NodeWithNeighbours]("neighbour_nodes")
+      }
+
+      override def apply(node: NodeWithNeighbours): NodeWithNeighbours = {
+        var minId = node.id
+        for (neighbour <- node.neighbours) {
+            for (neighbour_node <- neighbour_nodes){
+              if (neighbour.equals(neighbour_node.name)){
+                if (neighbour_node.id < node.id){
+                  minId = neighbour_node.id
+                }
+              }
+            }
+        }
+        return new NodeWithNeighbours(node.name, minId)
+      }
+    }
 
 
 
     // for i iterations:
 
       // for every node:
+
+//    println(NodesWithNeighboursCollection.collect())
+
+    var nodes = NodesWithNeighboursCollection
+      .mapJava(new SelectMinimumIDofNeighbours)
+      .withBroadcast(NodesWithNeighboursCollection2, "neighbour_nodes")
+
+    println(nodes.collect())
 
         // mininum = max id
 

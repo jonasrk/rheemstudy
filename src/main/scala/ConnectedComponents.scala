@@ -10,7 +10,7 @@ import org.qcri.rheem.java.Java
 import org.qcri.rheem.spark.Spark
 
 import scala.collection.JavaConversions._
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.util.Random
 
 object ConnectedComponents {
@@ -73,8 +73,30 @@ object ConnectedComponents {
       .map(parseTriple).withName("Parse triples")
       .map { case (s, p, o) => (s, o) }.withName("Discard predicate")
 
-    println(edges.collect())
+    val parsed_edges = edges.collect()
+    
+    // new list of node objects
 
+
+    case class NodeWithNeighbours(string: String) {
+      val id: Int = 0
+    }
+
+    var NodesWithNeighbours = scala.collection.mutable.Map[NodeWithNeighbours, String]()
+    
+    // for edge in list
+
+    for (edge <- parsed_edges){
+
+      val node = NodeWithNeighbours(edge._1)
+      NodesWithNeighbours += (node -> edge._2)
+      val node2 = NodeWithNeighbours(edge._2)
+      NodesWithNeighbours += (node2 -> edge._1)
+
+
+    }
+
+    println(NodesWithNeighbours)
 
     // give every node an id
 

@@ -75,35 +75,49 @@ object ConnectedComponents {
       .map { case (s, p, o) => (s, o) }.withName("Discard predicate")
 
     val parsed_edges = edges.collect()
-    
+
     // new list of node objects
 
 
-    case class NodeWithNeighbours(name: String, id: Int) {
-      var neighbours = new ArrayBuffer[String]
+    case class NodeWithNeighbours(name: String, id: Int, neighbours: ArrayBuffer[String]) {
       def add_neighbour(name: String): Unit ={
         neighbours += name
       }
     }
 
     var NodesWithNeighbours = new ArrayBuffer[NodeWithNeighbours]()
-    
+
     // for edge in list
 
     var id = 0;
 
     for (edge <- parsed_edges){
 
-
-      val node = NodeWithNeighbours(edge._1, id)
-      node.add_neighbour(edge._2)
-      NodesWithNeighbours += node
-      val node2 = NodeWithNeighbours(edge._2, id+1)
-      node2.add_neighbour(edge._1)
-      NodesWithNeighbours += node2
-
-      id = id + 2
-
+      var found_1 = false
+      var found_2 = false
+      for (existing_node <- NodesWithNeighbours){
+        if (existing_node.name == edge._1){
+          found_1 = true
+          existing_node.add_neighbour(edge._2)
+        } else if (existing_node.name == edge._2){
+          found_2 = true
+          existing_node.add_neighbour(edge._1)
+        }
+      }
+      if (!found_1) {
+        val s = new ArrayBuffer[String]()
+        s += edge._2
+        val node = NodeWithNeighbours(edge._1, id, s)
+        NodesWithNeighbours += node
+        id += 1
+      }
+      if (!found_2) {
+        val s = new ArrayBuffer[String]()
+        s += edge._1
+        val node2 = NodeWithNeighbours(edge._2, id + 1, s)
+        NodesWithNeighbours += node2
+        id += 1
+      }
 
     }
 
@@ -122,59 +136,67 @@ object ConnectedComponents {
       override def apply(node: NodeWithNeighbours): NodeWithNeighbours = {
         var minId = node.id
         for (neighbour <- node.neighbours) {
-            for (neighbour_node <- neighbour_nodes){
-              if (neighbour.equals(neighbour_node.name)){
-                if (neighbour_node.id < node.id){
-                  minId = neighbour_node.id
-                }
+          for (neighbour_node <- neighbour_nodes){
+            if (neighbour.equals(neighbour_node.name)){
+              if (neighbour_node.id < node.id){
+                minId = neighbour_node.id
               }
             }
+          }
         }
-        return new NodeWithNeighbours(node.name, minId)
+        return new NodeWithNeighbours(node.name, minId, node.neighbours)
       }
     }
 
 
+    var SelectMinimumOperators = new ListBuffer[DataQuanta[NodeWithNeighbours]]()
 
-    // for i iterations:
+    // iteration ZERO
 
-      // for every node:
-
-//    println(NodesWithNeighboursCollection.collect())
-
-    var nodes = NodesWithNeighboursCollection
+    SelectMinimumOperators += NodesWithNeighboursCollection
       .mapJava(new SelectMinimumIDofNeighbours)
       .withBroadcast(NodesWithNeighboursCollection2, "neighbour_nodes")
 
-    println(nodes.collect())
+    // for i iterations:
+    for (1 <- 0 to iterations - 1){
 
-        // mininum = max id
+      // for every node:
 
-        // for each neighbour:
+      //    println(NodesWithNeighboursCollection.collect())
 
-          // if neighbur id < minimum:
+      SelectMinimumOperators += SelectMinimumOperators.last
+        .mapJava(new SelectMinimumIDofNeighbours)
+        .withBroadcast(NodesWithNeighboursCollection2, "neighbour_nodes")
 
-            // minumum = neighbour_id
 
-        // if node_id < minumum:
 
-          // node_id = minimum
+
+
 
       // for id in id_changed:
 
-        // does a node with this id still exist? if no, remove from id_changed
+      // does a node with this id still exist? if no, remove from id_changed
 
-        // if it does exist:
+      // if it does exist:
 
-          // neighbour changed = false
+      // neighbour changed = false
 
-          // for each node with this key
+      // for each node with this key
 
-            // has a neighbour changed in the last iteration?
+      // has a neighbour changed in the last iteration?
 
-              // if no, they can be taken out and put into the result set
+      // if no, they can be taken out and put into the result set
 
 
+    }
+
+    var results =  SelectMinimumOperators.last.collect()
+
+    for (result <- results){
+      if (result.neighbours.size > 0){
+        println(result)
+      }
+    }
 
   }
 }

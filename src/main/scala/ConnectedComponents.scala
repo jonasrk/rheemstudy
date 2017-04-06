@@ -121,10 +121,7 @@ object ConnectedComponents {
 
     }
 
-    var NodesWithNeighboursCollection = planBuilder.loadCollection(NodesWithNeighbours)
-    var NodesWithNeighboursCollection2 = planBuilder.loadCollection(NodesWithNeighbours)
-
-    class SelectMinimumIDofNeighbours extends ExtendedSerializableFunction[NodeWithNeighbours, NodeWithNeighbours] {
+    class SelectMinimumIdOfNeighbours extends ExtendedSerializableFunction[NodeWithNeighbours, NodeWithNeighbours] {
 
       /** Keeps the broadcasted centroids. */
       var neighbour_nodes:  Iterable[NodeWithNeighbours] = _
@@ -153,9 +150,12 @@ object ConnectedComponents {
 
     // iteration ZERO
 
-    SelectMinimumOperators += NodesWithNeighboursCollection
-      .mapJava(new SelectMinimumIDofNeighbours)
-      .withBroadcast(NodesWithNeighboursCollection2, "neighbour_nodes")
+    val NodesWithNeighboursQuantum = planBuilder.loadCollection(NodesWithNeighbours)
+
+    SelectMinimumOperators += NodesWithNeighboursQuantum
+      .map(x => x)
+      .mapJava(new SelectMinimumIdOfNeighbours)
+      .withBroadcast(NodesWithNeighboursQuantum, "neighbour_nodes")
 
     // for i iterations:
     for (1 <- 1 to iterations){
@@ -164,11 +164,10 @@ object ConnectedComponents {
 
       //    println(NodesWithNeighboursCollection.collect())
 
-      var tmp = SelectMinimumOperators.last
-
       SelectMinimumOperators += SelectMinimumOperators.last
-        .mapJava(new SelectMinimumIDofNeighbours)
-        .withBroadcast(tmp, "neighbour_nodes")
+        .map(x => x)
+        .mapJava(new SelectMinimumIdOfNeighbours)
+        .withBroadcast(SelectMinimumOperators.last, "neighbour_nodes")
 
 
 

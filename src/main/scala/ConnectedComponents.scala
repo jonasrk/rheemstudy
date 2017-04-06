@@ -99,7 +99,8 @@ object ConnectedComponents {
         if (existing_node.name == edge._1){
           found_1 = true
           existing_node.add_neighbour(edge._2)
-        } else if (existing_node.name == edge._2){
+        }
+        if (existing_node.name == edge._2){
           found_2 = true
           existing_node.add_neighbour(edge._1)
         }
@@ -114,7 +115,7 @@ object ConnectedComponents {
       if (!found_2) {
         val s = new ArrayBuffer[String]()
         s += edge._1
-        val node2 = NodeWithNeighbours(edge._2, id + 1, s)
+        val node2 = NodeWithNeighbours(edge._2, id, s)
         NodesWithNeighbours += node2
         id += 1
       }
@@ -152,18 +153,21 @@ object ConnectedComponents {
 
     val NodesWithNeighboursQuantum = planBuilder.loadCollection(NodesWithNeighbours)
 
-    SelectMinimumOperators += NodesWithNeighboursQuantum
-      .map(x => x)
-      .mapJava(new SelectMinimumIdOfNeighbours)
-      .withBroadcast(NodesWithNeighboursQuantum, "neighbour_nodes")
+    if (iterations > 0){
+      SelectMinimumOperators += NodesWithNeighboursQuantum
+        .map(x => x)
+        .mapJava(new SelectMinimumIdOfNeighbours)
+        .withBroadcast(NodesWithNeighboursQuantum, "neighbour_nodes")
+    } else {
+      SelectMinimumOperators += NodesWithNeighboursQuantum
+    }
 
     // for i iterations:
-    for (1 <- 1 to iterations){
+    for (i <- 1 to iterations){
 
       // for every node:
 
       //    println(NodesWithNeighboursCollection.collect())
-
       SelectMinimumOperators += SelectMinimumOperators.last
         .map(x => x)
         .mapJava(new SelectMinimumIdOfNeighbours)
@@ -194,9 +198,7 @@ object ConnectedComponents {
     var results =  SelectMinimumOperators.last.collect()
 
     for (result <- results){
-      if (result.neighbours.size > 0){
         println(result)
-      }
     }
 
   }

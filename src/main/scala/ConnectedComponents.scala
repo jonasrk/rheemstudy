@@ -158,15 +158,17 @@ object ConnectedComponents {
       .withBroadcast(NodesWithNeighboursCollection2, "neighbour_nodes")
 
     // for i iterations:
-    for (1 <- 0 to iterations - 1){
+    for (1 <- 1 to iterations){
 
       // for every node:
 
       //    println(NodesWithNeighboursCollection.collect())
 
+      var tmp = SelectMinimumOperators.last
+
       SelectMinimumOperators += SelectMinimumOperators.last
         .mapJava(new SelectMinimumIDofNeighbours)
-        .withBroadcast(NodesWithNeighboursCollection2, "neighbour_nodes")
+        .withBroadcast(tmp, "neighbour_nodes")
 
 
 

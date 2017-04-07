@@ -66,9 +66,13 @@ object ConnectedComponents {
     // Read and parse the input file.
     val edges = planBuilder
       .readTextFile(inputUrlNodes).withName("Load file")
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .filter(!_.startsWith("#"), selectivity = 1.0).withName("Filter comments")
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .map(parseTriple).withName("Parse triples")
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .map { case (s, p, o) => (s, o) }.withName("Discard predicate")
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     val parsed_edges = edges.collect()
 
@@ -144,14 +148,18 @@ object ConnectedComponents {
 
     // START iteration ZERO
 
-    val NodesWithNeighboursQuantum = planBuilder.loadCollection(NodesWithNeighbours)
+    val NodesWithNeighboursQuantum = planBuilder
+      .loadCollection(NodesWithNeighbours)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var SelectMinimumAndReduceOperator = new ListBuffer[DataQuanta[edge]]
     var JoinOperator = new ListBuffer[DataQuanta[org.qcri.rheem.basic.data.Tuple2[edge, edge]]]
 
     JoinOperator += NodesWithNeighboursQuantum
       .map(x => x)
-      .join(_.src, NodesWithNeighboursQuantum, _.target)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
+      .join[edge, Int](_.src, NodesWithNeighboursQuantum, _.target)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     SelectMinimumAndReduceOperator += JoinOperator.last
       .map(x => {
@@ -161,50 +169,64 @@ object ConnectedComponents {
           edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 1)
         }
       })
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .reduceByKey(_.unique_edge_id, _.min_id(_))
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var IdUpdate, filter_stable, filter_unstable = new ListBuffer[DataQuanta[Tuple2[Int, Int]]]
     IdUpdate += SelectMinimumAndReduceOperator.last
       .map(x => (x.minId, x.has_changed))
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .reduceByKey(_._1, (x, y) => (x._1, scala.math.max(x._2, y._2)))
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
     filter_stable += IdUpdate.last
       .filter(_._2 == 0)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
     filter_unstable += IdUpdate.last
       .filter(_._2 == 0)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var UnstableEdges = new ListBuffer[DataQuanta[edge]]
     UnstableEdges += SelectMinimumAndReduceOperator.last
       .mapJava(new TagStableEdges)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .withBroadcast(filter_unstable.last, "unstable_ids")
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .filter(_.has_changed != -1)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var StableEdges = SelectMinimumAndReduceOperator.last
           .mapJava(new TagStableEdges)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
           .withBroadcast(filter_unstable.last, "unstable_ids")
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
           .filter(_.has_changed == -1)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var iteration_list = planBuilder
       .loadCollection(List(0))
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var UnstableEdgesCount = new ListBuffer[DataQuanta[CountWithIteration]]()
 
     UnstableEdgesCount += UnstableEdges.last
       .count
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .mapJava(new AnnotateUnstableEdgeCounts)
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
       .withBroadcast(iteration_list, "iteration_id")
+      .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var AllUnstableEdgesCounts = UnstableEdgesCount.last
 
+    // END iteration ZERO
 
-
-
-
-    // for i iterations:
-    for (i <- 1 to iterations - 1){
-
+    def one_iteration(platform_id: Int, iteration: Int)={
       JoinOperator += UnstableEdges.last
         .map(x => x)
-        .join(_.src, SelectMinimumAndReduceOperator.last, _.target)
+        .withTargetPlatforms(platforms(platform_id))
+        .join[edge, Int](_.src, SelectMinimumAndReduceOperator.last, _.target)
+        .withTargetPlatforms(platforms(platform_id))
 
       SelectMinimumAndReduceOperator += JoinOperator.last
         .map(x => {
@@ -214,47 +236,75 @@ object ConnectedComponents {
             edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 1)
           }
         })
+        .withTargetPlatforms(platforms(platform_id))
         .reduceByKey(_.unique_edge_id, _.min_id(_))
+        .withTargetPlatforms(platforms(platform_id))
 
       iteration_list = planBuilder
-        .loadCollection(List(i))
+        .loadCollection(List(iteration))
+        .withTargetPlatforms(platforms(platform_id))
 
       UnstableEdgesCount += UnstableEdges.last
         .count
+        .withTargetPlatforms(platforms(platform_id))
         .mapJava(new AnnotateUnstableEdgeCounts)
+        .withTargetPlatforms(platforms(platform_id))
         .withBroadcast(iteration_list, "iteration_id")
+        .withTargetPlatforms(platforms(platform_id))
 
       AllUnstableEdgesCounts = AllUnstableEdgesCounts
         .union(UnstableEdgesCount.last)
+        .withTargetPlatforms(platforms(platform_id))
 
       IdUpdate += SelectMinimumAndReduceOperator.last
         .map(x => (x.minId, x.has_changed))
+        .withTargetPlatforms(platforms(platform_id))
         .reduceByKey(_._1, (x, y) => (x._1, scala.math.max(x._2, y._2)))
+        .withTargetPlatforms(platforms(platform_id))
 
       filter_stable += IdUpdate.last
         .filter(_._2 == 0)
+        .withTargetPlatforms(platforms(platform_id))
 
       filter_unstable += IdUpdate.last
         .filter(_._2 == 0)
+        .withTargetPlatforms(platforms(platform_id))
 
       UnstableEdges += SelectMinimumAndReduceOperator.last
         .mapJava(new TagStableEdges)
+        .withTargetPlatforms(platforms(platform_id))
         .withBroadcast(filter_unstable.last, "unstable_ids")
+        .withTargetPlatforms(platforms(platform_id))
         .filter(_.has_changed != -1)
+        .withTargetPlatforms(platforms(platform_id))
 
       StableEdges = StableEdges
         .union(
           SelectMinimumAndReduceOperator.last
             .mapJava(new TagStableEdges)
+            .withTargetPlatforms(platforms(platform_id))
             .withBroadcast(filter_unstable.last, "unstable_ids")
+            .withTargetPlatforms(platforms(platform_id))
             .filter(_.has_changed == -1)
+            .withTargetPlatforms(platforms(platform_id))
         )
-
-
+        .withTargetPlatforms(platforms(platform_id))
     }
 
+    // START iteration 1..n
+    for (iteration <- 1 to m) {
+      one_iteration(1, iteration) // spark
+    }
+    for (iteration <- m+1 to iterations-1) {
+      one_iteration(0, iteration) // java
+    }
+
+
     //    var results = StableEdges.count.collect()
-    var results = AllUnstableEdgesCounts.collect()
+    var results = AllUnstableEdgesCounts
+      .withTargetPlatforms(platforms(final_count_platform_id))
+      .collect()
+
     println(results)
     //    for (result <- results){
     //      println(result)

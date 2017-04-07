@@ -126,6 +126,21 @@ object ConnectedComponents {
       }
     }
 
+    case class CountWithIteration(count: Long, iteration: Int) {}
+
+    class AnnotateUnstableEdgeCounts extends ExtendedSerializableFunction[java.lang.Long, CountWithIteration]  {
+
+      var iteration: Iterable[Int] = _
+
+      override def open(executionCtx: ExecutionContext) = {
+        iteration = executionCtx.getBroadcast[Int]("iteration_id")
+      }
+
+      override def apply(count: java.lang.Long): CountWithIteration = {
+        return new CountWithIteration(count, iteration.last)
+      }
+    }
+
 
     // START iteration ZERO
 
@@ -134,11 +149,62 @@ object ConnectedComponents {
     var SelectMinimumAndReduceOperator = new ListBuffer[DataQuanta[edge]]
     var JoinOperator = new ListBuffer[DataQuanta[org.qcri.rheem.basic.data.Tuple2[edge, edge]]]
 
-    if (iterations > 0){
+    JoinOperator += NodesWithNeighboursQuantum
+      .map(x => x)
+      .join(_.src, NodesWithNeighboursQuantum, _.target)
 
-      JoinOperator += NodesWithNeighboursQuantum
+    SelectMinimumAndReduceOperator += JoinOperator.last
+      .map(x => {
+        if (x.field0.minId == x.field1.minId){
+          edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 0)
+        } else {
+          edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 1)
+        }
+      })
+      .reduceByKey(_.unique_edge_id, _.min_id(_))
+
+    var IdUpdate, filter_stable, filter_unstable = new ListBuffer[DataQuanta[Tuple2[Int, Int]]]
+    IdUpdate += SelectMinimumAndReduceOperator.last
+      .map(x => (x.minId, x.has_changed))
+      .reduceByKey(_._1, (x, y) => (x._1, scala.math.max(x._2, y._2)))
+    filter_stable += IdUpdate.last
+      .filter(_._2 == 0)
+    filter_unstable += IdUpdate.last
+      .filter(_._2 == 0)
+
+    var UnstableEdges = new ListBuffer[DataQuanta[edge]]
+    UnstableEdges += SelectMinimumAndReduceOperator.last
+      .mapJava(new TagStableEdges)
+      .withBroadcast(filter_unstable.last, "unstable_ids")
+      .filter(_.has_changed != -1)
+
+    var StableEdges = SelectMinimumAndReduceOperator.last
+          .mapJava(new TagStableEdges)
+          .withBroadcast(filter_unstable.last, "unstable_ids")
+          .filter(_.has_changed == -1)
+
+    var iteration_list = planBuilder
+      .loadCollection(List(0))
+
+    var UnstableEdgesCount = new ListBuffer[DataQuanta[CountWithIteration]]()
+
+    UnstableEdgesCount += UnstableEdges.last
+      .count
+      .mapJava(new AnnotateUnstableEdgeCounts)
+      .withBroadcast(iteration_list, "iteration_id")
+
+    var AllUnstableEdgesCounts = UnstableEdgesCount.last
+
+
+
+
+
+    // for i iterations:
+    for (i <- 1 to iterations - 1){
+
+      JoinOperator += UnstableEdges.last
         .map(x => x)
-        .join(_.src, NodesWithNeighboursQuantum, _.target)
+        .join(_.src, SelectMinimumAndReduceOperator.last, _.target)
 
       SelectMinimumAndReduceOperator += JoinOperator.last
         .map(x => {
@@ -149,21 +215,17 @@ object ConnectedComponents {
           }
         })
         .reduceByKey(_.unique_edge_id, _.min_id(_))
-    } else {
-      SelectMinimumAndReduceOperator += NodesWithNeighboursQuantum
-    }
 
-    var IdUpdate, filter_stable, filter_unstable = new ListBuffer[DataQuanta[Tuple2[Int, Int]]]
-    var UnstableEdges = new ListBuffer[DataQuanta[edge]]
+      iteration_list = planBuilder
+        .loadCollection(List(i))
 
-    UnstableEdges += SelectMinimumAndReduceOperator.last
-      .filter(_.has_changed != -1) // TODO JRK This is not actually doing something, just initializing the var, probably stupid
+      UnstableEdgesCount += UnstableEdges.last
+        .count
+        .mapJava(new AnnotateUnstableEdgeCounts)
+        .withBroadcast(iteration_list, "iteration_id")
 
-    var StableEdges = SelectMinimumAndReduceOperator.last
-      .filter(_.has_changed == -1) // TODO JRK This is not actually doing something, just initializing the var, probably stupid
-
-    // for i iterations:
-    for (i <- 1 to iterations - 1){
+      AllUnstableEdgesCounts = AllUnstableEdgesCounts
+        .union(UnstableEdgesCount.last)
 
       IdUpdate += SelectMinimumAndReduceOperator.last
         .map(x => (x.minId, x.has_changed))
@@ -188,26 +250,14 @@ object ConnectedComponents {
             .filter(_.has_changed == -1)
         )
 
-      JoinOperator += UnstableEdges.last
-        .map(x => x)
-        .join(_.src, SelectMinimumAndReduceOperator.last, _.target)
 
-      SelectMinimumAndReduceOperator += JoinOperator.last
-        .map(x => {
-          if (x.field0.minId == x.field1.minId){
-            edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 0)
-          } else {
-            edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 1)
-          }
-        })
-        .reduceByKey(_.unique_edge_id, _.min_id(_))
     }
 
-//    var results = StableEdges.count.collect()
-var results = UnstableEdges.last.count.collect()
+    //    var results = StableEdges.count.collect()
+    var results = AllUnstableEdgesCounts.collect()
     println(results)
-//    for (result <- results){
-//      println(result)
-//    }
+    //    for (result <- results){
+    //      println(result)
+    //    }
   }
 }

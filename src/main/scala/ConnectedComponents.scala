@@ -115,29 +115,29 @@ object ConnectedComponents {
       unique_edge_id += 1
     }
 
-//    class SelectMinimumIdOfNeighbours extends ExtendedSerializableFunction[NwN, NwN] {
-//
-//      /** Keeps the broadcasted centroids. */
-//      var neighbour_nodes:  Iterable[NwN] = _
-//
-//      override def open(executionCtx: ExecutionContext) = {
-//        neighbour_nodes = executionCtx.getBroadcast[NwN]("neighbour_nodes")
-//      }
-//
-//      override def apply(node: NwN): NwN = {
-//        var minId = node.id
-//        for (neighbour <- node.neighbours) {
-//          for (neighbour_node <- neighbour_nodes){
-//            if (neighbour.equals(neighbour_node.id)){
-//              if (neighbour_node.id < node.id){
-//                minId = neighbour_node.id
-//              }
-//            }
-//          }
-//        }
-//        return new NwN(node.id, minId, node.neighbours)
-//      }
-//    }
+    //    class SelectMinimumIdOfNeighbours extends ExtendedSerializableFunction[NwN, NwN] {
+    //
+    //      /** Keeps the broadcasted centroids. */
+    //      var neighbour_nodes:  Iterable[NwN] = _
+    //
+    //      override def open(executionCtx: ExecutionContext) = {
+    //        neighbour_nodes = executionCtx.getBroadcast[NwN]("neighbour_nodes")
+    //      }
+    //
+    //      override def apply(node: NwN): NwN = {
+    //        var minId = node.id
+    //        for (neighbour <- node.neighbours) {
+    //          for (neighbour_node <- neighbour_nodes){
+    //            if (neighbour.equals(neighbour_node.id)){
+    //              if (neighbour_node.id < node.id){
+    //                minId = neighbour_node.id
+    //              }
+    //            }
+    //          }
+    //        }
+    //        return new NwN(node.id, minId, node.neighbours)
+    //      }
+    //    }
 
 
     var SelectMinimumOperators = new ListBuffer[DataQuanta[edge]]
@@ -158,15 +158,12 @@ object ConnectedComponents {
         .map(x => new edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target))
         .reduceByKey(_.unique_edge_id, _.min_id(_))
 
-      SelectMinimumOperators2 += SelectMinimumOperators.last
-        .map(x => x)
-        .join(_.src, SelectMinimumOperators.last, _.target)
+      var IdUpdate = SelectMinimumOperators.last
+        .map(_.minId)
+        .reduceByKey(_.toInt, (x, y) => x)
 
-      SelectMinimumOperators += SelectMinimumOperators2.last
-        .map(x => new edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target))
-        .reduceByKey(_.unique_edge_id, _.min_id(_))
 
-      var results = SelectMinimumOperators.last.collect()
+      var results = IdUpdate.collect()
       for (result <- results){
         println(result)
       }

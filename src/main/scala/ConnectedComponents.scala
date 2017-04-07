@@ -78,23 +78,20 @@ object ConnectedComponents {
 
     // new list of node objects
 
-
-    case class NodeWithNeighbours(id: Int, minId: Int, neighbours: ArrayBuffer[Int]) {
-      def add_neighbour(neighbour_id: Int): Unit ={
-        neighbours += neighbour_id
-      }
+    //Node with Neighbours
+    case class edge(unique_edge_id: Int, src: Int, minId: Int, target: Int) {
+      def min_id(that: edge) = edge(this.unique_edge_id, this.src, scala.math.min(this.minId, that.minId), this.target)
     }
 
-    var NodesWithNeighbours = new ArrayBuffer[NodeWithNeighbours]()
+    var NodesWithNeighbours = new ArrayBuffer[edge]()
 
     // for edge in list
 
     var id_changed = new ArrayBuffer[Int]()
-
-
     var id_mapping = scala.collection.mutable.Map[String, Int]()
     var mapping_id = 0
 
+    // creating a map
     for (edge <- parsed_edges){
       if (!(id_mapping contains edge._1)){
         id_mapping += (edge._1 -> mapping_id)
@@ -106,73 +103,70 @@ object ConnectedComponents {
       }
     }
 
-    for (edge <- parsed_edges){
+    var unique_edge_id = 0
+    // creating a graph of ids
+    for (parsed_edge <- parsed_edges){
+      val node = edge(unique_edge_id, id_mapping(parsed_edge._1), id_mapping(parsed_edge._1), id_mapping(parsed_edge._2))
+      NodesWithNeighbours += node
+      unique_edge_id += 1
 
-      var found_1 = false
-      var found_2 = false
-      for (existing_node <- NodesWithNeighbours){
-        if (existing_node.id == id_mapping(edge._1)){
-          found_1 = true
-          existing_node.add_neighbour(id_mapping(edge._2))
-        }
-        if (existing_node.id == id_mapping(edge._2)){
-          found_2 = true
-          existing_node.add_neighbour(id_mapping(edge._1))
-        }
-      }
-      if (!found_1) {
-        val neighbours = new ArrayBuffer[Int]()
-        neighbours += id_mapping(edge._2)
-        val node = NodeWithNeighbours(id_mapping(edge._1), id_mapping(edge._1), neighbours)
-        NodesWithNeighbours += node
-      }
-      if (!found_2) {
-        val neighbours = new ArrayBuffer[Int]()
-        neighbours += id_mapping(edge._1)
-        val node2 = NodeWithNeighbours(id_mapping(edge._2), id_mapping(edge._2), neighbours)
-        NodesWithNeighbours += node2
-      }
+      val node2 = edge(unique_edge_id, id_mapping(parsed_edge._2), id_mapping(parsed_edge._2), id_mapping(parsed_edge._1))
+      NodesWithNeighbours += node2
+      unique_edge_id += 1
     }
 
-    class SelectMinimumIdOfNeighbours extends ExtendedSerializableFunction[NodeWithNeighbours, NodeWithNeighbours] {
+//    class SelectMinimumIdOfNeighbours extends ExtendedSerializableFunction[NwN, NwN] {
+//
+//      /** Keeps the broadcasted centroids. */
+//      var neighbour_nodes:  Iterable[NwN] = _
+//
+//      override def open(executionCtx: ExecutionContext) = {
+//        neighbour_nodes = executionCtx.getBroadcast[NwN]("neighbour_nodes")
+//      }
+//
+//      override def apply(node: NwN): NwN = {
+//        var minId = node.id
+//        for (neighbour <- node.neighbours) {
+//          for (neighbour_node <- neighbour_nodes){
+//            if (neighbour.equals(neighbour_node.id)){
+//              if (neighbour_node.id < node.id){
+//                minId = neighbour_node.id
+//              }
+//            }
+//          }
+//        }
+//        return new NwN(node.id, minId, node.neighbours)
+//      }
+//    }
 
-      /** Keeps the broadcasted centroids. */
-      var neighbour_nodes:  Iterable[NodeWithNeighbours] = _
 
-      override def open(executionCtx: ExecutionContext) = {
-        neighbour_nodes = executionCtx.getBroadcast[NodeWithNeighbours]("neighbour_nodes")
-      }
+    var SelectMinimumOperators = new ListBuffer[DataQuanta[edge]]
+    var SelectMinimumOperators2 = new ListBuffer[DataQuanta[org.qcri.rheem.basic.data.Tuple2[edge, edge]]]
 
-      override def apply(node: NodeWithNeighbours): NodeWithNeighbours = {
-        var minId = node.id
-        for (neighbour <- node.neighbours) {
-          for (neighbour_node <- neighbour_nodes){
-            if (neighbour.equals(neighbour_node.id)){
-              if (neighbour_node.id < node.id){
-                minId = neighbour_node.id
-              }
-            }
-          }
-        }
-        return new NodeWithNeighbours(node.id, minId, node.neighbours)
-      }
-    }
-
-
-    var SelectMinimumOperators = new ListBuffer[DataQuanta[org.qcri.rheem.basic.data.Tuple2[NodeWithNeighbours, NodeWithNeighbours]]]
 
     // iteration ZERO
 
     val NodesWithNeighboursQuantum = planBuilder.loadCollection(NodesWithNeighbours)
-    val IdQuantum = planBuilder.loadCollection(id_changed)
 
     if (iterations > 0){
 
+      SelectMinimumOperators2 += NodesWithNeighboursQuantum
+        .map(x => x)
+        .join(_.src, NodesWithNeighboursQuantum, _.target)
 
-      SelectMinimumOperators += NodesWithNeighboursQuantum
-        .join(_.id, NodesWithNeighboursQuantum, _.neighbours.last)
+      SelectMinimumOperators += SelectMinimumOperators2.last
+        .map(x => new edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target))
+        .reduceByKey(_.unique_edge_id, _.min_id(_))
 
-      var results = NodesWithNeighboursQuantum.collect()
+      SelectMinimumOperators2 += SelectMinimumOperators.last
+        .map(x => x)
+        .join(_.src, SelectMinimumOperators.last, _.target)
+
+      SelectMinimumOperators += SelectMinimumOperators2.last
+        .map(x => new edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target))
+        .reduceByKey(_.unique_edge_id, _.min_id(_))
+
+      var results = SelectMinimumOperators.last.collect()
       for (result <- results){
         println(result)
       }

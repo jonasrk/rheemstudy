@@ -1,7 +1,6 @@
 /**
   * Created by jonas on 2/13/17.
   */
-import org.apache.spark.graphx.lib.PageRank
 import org.qcri.rheem.api._
 import org.qcri.rheem.core.api.{Configuration, RheemContext}
 import org.qcri.rheem.core.function.ExecutionContext
@@ -10,14 +9,12 @@ import org.qcri.rheem.java.Java
 import org.qcri.rheem.spark.Spark
 
 import scala.collection.JavaConversions._
-import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
-import scala.util.Random
 
 object ConnectedComponents {
   def main(args: Array[String]): Unit = {
 
-    // Settings
+    // Parse command line parameters
     var inputUrlNodes = ""
     var iterations = -1
 
@@ -48,11 +45,10 @@ object ConnectedComponents {
       .withPlugin(Spark.basicPlugin)
 
     val planBuilder = new PlanBuilder(rheemContext)
-      .withJobName(s"k-means ($inputUrlNodes, $platform, m=$m, $iterations iterations)")
+      .withJobName(s"connected_components ($inputUrlNodes, $platform, m=$m, $iterations iterations)")
       .withUdfJarsOf(this.getClass)
 
     // read .nt file
-
     def parseTriple(raw: String): (String, String, String) = {
       // Find the first two spaces: Odds are that these are separate subject, predicated and object.
       val firstSpacePos = raw.indexOf(' ')
@@ -76,22 +72,15 @@ object ConnectedComponents {
 
     val parsed_edges = edges.collect()
 
-    // new list of node objects
-
-    //Node with Neighbours
     case class edge(unique_edge_id: Int, src: Int, minId: Int, target: Int, has_changed: Int) {
       def min_id(that: edge) = edge(this.unique_edge_id, this.src, scala.math.min(this.minId, that.minId), this.target, this.has_changed)
     }
 
     var NodesWithNeighbours = new ArrayBuffer[edge]()
 
-    // for edge in list
-
-    var id_changed = new ArrayBuffer[Int]()
+    // creating a map
     var id_mapping = scala.collection.mutable.Map[String, Int]()
     var mapping_id = 0
-
-    // creating a map
     for (edge <- parsed_edges){
       if (!(id_mapping contains edge._1)){
         id_mapping += (edge._1 -> mapping_id)
@@ -103,20 +92,18 @@ object ConnectedComponents {
       }
     }
 
-    var unique_edge_id = 0
     // creating a graph of ids
+    var unique_edge_id = 0
     for (parsed_edge <- parsed_edges){
       val node = edge(unique_edge_id, id_mapping(parsed_edge._1), id_mapping(parsed_edge._1), id_mapping(parsed_edge._2), 1)
       NodesWithNeighbours += node
       unique_edge_id += 1
-
       val node2 = edge(unique_edge_id, id_mapping(parsed_edge._2), id_mapping(parsed_edge._2), id_mapping(parsed_edge._1), 1)
       NodesWithNeighbours += node2
       unique_edge_id += 1
     }
 
     class TagStableEdges extends ExtendedSerializableFunction[edge, edge] {
-
       /** Keeps the broadcasted centroids. */
       var unstable_ids: Iterable[Tuple2[Int, Int]] = _
 
@@ -140,88 +127,71 @@ object ConnectedComponents {
     }
 
 
-
-    var SelectMinimumOperators = new ListBuffer[DataQuanta[edge]]
-    var SelectMinimumOperators2 = new ListBuffer[DataQuanta[org.qcri.rheem.basic.data.Tuple2[edge, edge]]]
-
-
-    // iteration ZERO
+    // START iteration ZERO
 
     val NodesWithNeighboursQuantum = planBuilder.loadCollection(NodesWithNeighbours)
 
+    var SelectMinimumAndReduceOperator = new ListBuffer[DataQuanta[edge]]
+    var JoinOperator = new ListBuffer[DataQuanta[org.qcri.rheem.basic.data.Tuple2[edge, edge]]]
+
     if (iterations > 0){
 
-      SelectMinimumOperators2 += NodesWithNeighboursQuantum
+      JoinOperator += NodesWithNeighboursQuantum
         .map(x => x)
         .join(_.src, NodesWithNeighboursQuantum, _.target)
 
-      SelectMinimumOperators += SelectMinimumOperators2.last
+      SelectMinimumAndReduceOperator += JoinOperator.last
         .map(x => {
           if (x.field0.minId == x.field1.minId){
-            new edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 0)
+            edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 0)
           } else {
-            new edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 1)
+            edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 1)
           }
         })
         .reduceByKey(_.unique_edge_id, _.min_id(_))
-      
+    } else {
+      SelectMinimumAndReduceOperator += NodesWithNeighboursQuantum
+    }
 
-      SelectMinimumOperators2 += SelectMinimumOperators.last
-        .map(x => x)
-        .join(_.src, SelectMinimumOperators.last, _.target)
+    var IdUpdate, filter_stable, filter_unstable = new ListBuffer[DataQuanta[Tuple2[Int, Int]]]
+    var UnstableEdges = new ListBuffer[DataQuanta[edge]]
 
-      SelectMinimumOperators += SelectMinimumOperators2.last
-        .map(x => {
-          if (x.field0.minId == x.field1.minId){
-            new edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 0)
-          } else {
-            new edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 1)
-          }
-        })
-        .reduceByKey(_.unique_edge_id, _.min_id(_))
+    // for i iterations:
+    for (i <- 1 to iterations - 1){
 
-      var IdUpdate = SelectMinimumOperators.last
+      IdUpdate += SelectMinimumAndReduceOperator.last
         .map(x => (x.minId, x.has_changed))
         .reduceByKey(_._1, (x, y) => (x._1, scala.math.max(x._2, y._2)))
 
-      var filter_stable = IdUpdate
+      filter_stable += IdUpdate.last
         .filter(_._2 == 0)
 
-      var filter_unstable = IdUpdate
+      filter_unstable += IdUpdate.last
         .filter(_._2 == 0)
 
-      var next_iteration = SelectMinimumOperators.last
+      UnstableEdges += SelectMinimumAndReduceOperator.last
         .mapJava(new TagStableEdges)
-        .withBroadcast(filter_unstable, "unstable_ids")
+        .withBroadcast(filter_unstable.last, "unstable_ids")
         .filter(_.has_changed != -1)
 
+      JoinOperator += UnstableEdges.last
+        .map(x => x)
+        .join(_.src, SelectMinimumAndReduceOperator.last, _.target)
 
-
-      var results = next_iteration.collect()
-      for (result <- results){
-        println(result)
-      }
-
-      //        .map(x => x)
-      //        .mapJava(new SelectMinimumIdOfNeighbours)
-      //        .withBroadcast(NodesWithNeighboursQuantum, "neighbour_nodes")
-
-
-
-
-    } else {
-      //      SelectMinimumOperators += NodesWithNeighboursQuantum
+      SelectMinimumAndReduceOperator += JoinOperator.last
+        .map(x => {
+          if (x.field0.minId == x.field1.minId){
+            edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 0)
+          } else {
+            edge(x.field0.unique_edge_id, x.field0.src, scala.math.min(x.field0.minId, x.field1.minId), x.field0.target, 1)
+          }
+        })
+        .reduceByKey(_.unique_edge_id, _.min_id(_))
     }
 
-    // for i iterations:
-    for (i <- 1 to iterations){
-
-
+    var results = SelectMinimumAndReduceOperator.last.collect()
+    for (result <- results){
+      println(result)
     }
-
-
   }
-
-
-
 }

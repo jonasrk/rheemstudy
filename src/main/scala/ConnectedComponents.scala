@@ -115,6 +115,30 @@ object ConnectedComponents {
       unique_edge_id += 1
     }
 
+    class TagStableEdges extends ExtendedSerializableFunction[edge, edge] {
+
+      /** Keeps the broadcasted centroids. */
+      var unstable_ids: Iterable[Tuple2[Int, Int]] = _
+
+      override def open(executionCtx: ExecutionContext) = {
+        unstable_ids = executionCtx.getBroadcast[Tuple2[Int, Int]]("unstable_ids")
+      }
+
+      override def apply(edge: edge): edge = {
+        var found = false
+        for (unstable_id <- unstable_ids) {
+          if (unstable_id._1 == edge.minId){
+            found = true
+          }
+        }
+        if (found == true){
+          return new edge(edge.unique_edge_id, edge.src, edge.minId, edge.target, -1)
+        } else {
+          return new edge(edge.unique_edge_id, edge.src, edge.minId, edge.target, 1)
+        }
+      }
+    }
+
 
 
     var SelectMinimumOperators = new ListBuffer[DataQuanta[edge]]
@@ -140,6 +164,7 @@ object ConnectedComponents {
           }
         })
         .reduceByKey(_.unique_edge_id, _.min_id(_))
+      
 
       SelectMinimumOperators2 += SelectMinimumOperators.last
         .map(x => x)
@@ -159,8 +184,20 @@ object ConnectedComponents {
         .map(x => (x.minId, x.has_changed))
         .reduceByKey(_._1, (x, y) => (x._1, scala.math.max(x._2, y._2)))
 
+      var filter_stable = IdUpdate
+        .filter(_._2 == 0)
 
-      var results = IdUpdate.collect()
+      var filter_unstable = IdUpdate
+        .filter(_._2 == 0)
+
+      var next_iteration = SelectMinimumOperators.last
+        .mapJava(new TagStableEdges)
+        .withBroadcast(filter_unstable, "unstable_ids")
+        .filter(_.has_changed != -1)
+
+
+
+      var results = next_iteration.collect()
       for (result <- results){
         println(result)
       }

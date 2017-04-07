@@ -156,6 +156,12 @@ object ConnectedComponents {
     var IdUpdate, filter_stable, filter_unstable = new ListBuffer[DataQuanta[Tuple2[Int, Int]]]
     var UnstableEdges = new ListBuffer[DataQuanta[edge]]
 
+    UnstableEdges += SelectMinimumAndReduceOperator.last
+      .filter(_.has_changed != -1) // TODO JRK This is not actually doing something, just initializing the var, probably stupid
+
+    var StableEdges = SelectMinimumAndReduceOperator.last
+      .filter(_.has_changed == -1) // TODO JRK This is not actually doing something, just initializing the var, probably stupid
+
     // for i iterations:
     for (i <- 1 to iterations - 1){
 
@@ -174,6 +180,14 @@ object ConnectedComponents {
         .withBroadcast(filter_unstable.last, "unstable_ids")
         .filter(_.has_changed != -1)
 
+      StableEdges = StableEdges
+        .union(
+          SelectMinimumAndReduceOperator.last
+            .mapJava(new TagStableEdges)
+            .withBroadcast(filter_unstable.last, "unstable_ids")
+            .filter(_.has_changed == -1)
+        )
+
       JoinOperator += UnstableEdges.last
         .map(x => x)
         .join(_.src, SelectMinimumAndReduceOperator.last, _.target)
@@ -189,9 +203,11 @@ object ConnectedComponents {
         .reduceByKey(_.unique_edge_id, _.min_id(_))
     }
 
-    var results = SelectMinimumAndReduceOperator.last.collect()
-    for (result <- results){
-      println(result)
-    }
+//    var results = StableEdges.count.collect()
+var results = UnstableEdges.last.count.collect()
+    println(results)
+//    for (result <- results){
+//      println(result)
+//    }
   }
 }

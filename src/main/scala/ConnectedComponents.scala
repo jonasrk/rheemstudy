@@ -79,9 +79,9 @@ object ConnectedComponents {
     // new list of node objects
 
 
-    case class NodeWithNeighbours(name: String, id: Int, neighbours: ArrayBuffer[String]) {
-      def add_neighbour(name: String): Unit ={
-        neighbours += name
+    case class NodeWithNeighbours(id: Int, minId: Int, neighbours: ArrayBuffer[Int]) {
+      def add_neighbour(neighbour_id: Int): Unit ={
+        neighbours += neighbour_id
       }
     }
 
@@ -89,37 +89,49 @@ object ConnectedComponents {
 
     // for edge in list
 
-    var id = 0;
+    var id_changed = new ArrayBuffer[Int]()
+
+
+    var id_mapping = scala.collection.mutable.Map[String, Int]()
+    var mapping_id = 0
+
+    for (edge <- parsed_edges){
+      if (!(id_mapping contains edge._1)){
+        id_mapping += (edge._1 -> mapping_id)
+        mapping_id += 1
+      }
+      if (!(id_mapping contains edge._2)){
+        id_mapping += (edge._2 -> mapping_id)
+        mapping_id += 1
+      }
+    }
 
     for (edge <- parsed_edges){
 
       var found_1 = false
       var found_2 = false
       for (existing_node <- NodesWithNeighbours){
-        if (existing_node.name == edge._1){
+        if (existing_node.id == id_mapping(edge._1)){
           found_1 = true
-          existing_node.add_neighbour(edge._2)
+          existing_node.add_neighbour(id_mapping(edge._2))
         }
-        if (existing_node.name == edge._2){
+        if (existing_node.id == id_mapping(edge._2)){
           found_2 = true
-          existing_node.add_neighbour(edge._1)
+          existing_node.add_neighbour(id_mapping(edge._1))
         }
       }
       if (!found_1) {
-        val s = new ArrayBuffer[String]()
-        s += edge._2
-        val node = NodeWithNeighbours(edge._1, id, s)
+        val neighbours = new ArrayBuffer[Int]()
+        neighbours += id_mapping(edge._2)
+        val node = NodeWithNeighbours(id_mapping(edge._1), id_mapping(edge._1), neighbours)
         NodesWithNeighbours += node
-        id += 1
       }
       if (!found_2) {
-        val s = new ArrayBuffer[String]()
-        s += edge._1
-        val node2 = NodeWithNeighbours(edge._2, id, s)
+        val neighbours = new ArrayBuffer[Int]()
+        neighbours += id_mapping(edge._1)
+        val node2 = NodeWithNeighbours(id_mapping(edge._2), id_mapping(edge._2), neighbours)
         NodesWithNeighbours += node2
-        id += 1
       }
-
     }
 
     class SelectMinimumIdOfNeighbours extends ExtendedSerializableFunction[NodeWithNeighbours, NodeWithNeighbours] {
@@ -135,71 +147,56 @@ object ConnectedComponents {
         var minId = node.id
         for (neighbour <- node.neighbours) {
           for (neighbour_node <- neighbour_nodes){
-            if (neighbour.equals(neighbour_node.name)){
+            if (neighbour.equals(neighbour_node.id)){
               if (neighbour_node.id < node.id){
                 minId = neighbour_node.id
               }
             }
           }
         }
-        return new NodeWithNeighbours(node.name, minId, node.neighbours)
+        return new NodeWithNeighbours(node.id, minId, node.neighbours)
       }
     }
 
 
-    var SelectMinimumOperators = new ListBuffer[DataQuanta[NodeWithNeighbours]]()
+    var SelectMinimumOperators = new ListBuffer[DataQuanta[org.qcri.rheem.basic.data.Tuple2[NodeWithNeighbours, NodeWithNeighbours]]]
 
     // iteration ZERO
 
     val NodesWithNeighboursQuantum = planBuilder.loadCollection(NodesWithNeighbours)
+    val IdQuantum = planBuilder.loadCollection(id_changed)
 
     if (iterations > 0){
+
+
       SelectMinimumOperators += NodesWithNeighboursQuantum
-        .map(x => x)
-        .mapJava(new SelectMinimumIdOfNeighbours)
-        .withBroadcast(NodesWithNeighboursQuantum, "neighbour_nodes")
+        .join(_.id, NodesWithNeighboursQuantum, _.neighbours.last)
+
+      var results = NodesWithNeighboursQuantum.collect()
+      for (result <- results){
+        println(result)
+      }
+
+      //        .map(x => x)
+      //        .mapJava(new SelectMinimumIdOfNeighbours)
+      //        .withBroadcast(NodesWithNeighboursQuantum, "neighbour_nodes")
+
+
+
+
     } else {
-      SelectMinimumOperators += NodesWithNeighboursQuantum
+      //      SelectMinimumOperators += NodesWithNeighboursQuantum
     }
 
     // for i iterations:
     for (i <- 1 to iterations){
 
-      // for every node:
-
-      //    println(NodesWithNeighboursCollection.collect())
-      SelectMinimumOperators += SelectMinimumOperators.last
-        .map(x => x)
-        .mapJava(new SelectMinimumIdOfNeighbours)
-        .withBroadcast(SelectMinimumOperators.last, "neighbour_nodes")
-
-
-
-
-
-
-      // for id in id_changed:
-
-      // does a node with this id still exist? if no, remove from id_changed
-
-      // if it does exist:
-
-      // neighbour changed = false
-
-      // for each node with this key
-
-      // has a neighbour changed in the last iteration?
-
-      // if no, they can be taken out and put into the result set
-
 
     }
 
-    var results =  SelectMinimumOperators.last.collect()
-
-    for (result <- results){
-        println(result)
-    }
 
   }
+
+
+
 }

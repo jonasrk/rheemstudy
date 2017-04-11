@@ -77,7 +77,7 @@ object ConnectedComponents {
     val parsed_edges = edges.collect()
 
     case class edge(unique_edge_id: Int, src: Int, minId: Int, target: Int, has_changed: Int) {
-      def min_id(that: edge) = edge(this.unique_edge_id, this.src, scala.math.min(this.minId, that.minId), this.target, this.has_changed)
+      def min_id(that: edge) = edge(this.unique_edge_id, this.src, scala.math.min(this.minId, that.minId), this.target, scala.math.max(this.has_changed, that.has_changed))
     }
 
     var NodesWithNeighbours = new ArrayBuffer[edge]()
@@ -183,7 +183,7 @@ object ConnectedComponents {
       .filter(_._2 == 0)
       .withTargetPlatforms(platforms(first_iteration_platform_id))
     filter_unstable += IdUpdate.last
-      .filter(_._2 == 0)
+      .filter(_._2 == 1) // TODO JRK Why not 1?
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var UnstableEdges = new ListBuffer[DataQuanta[edge]]
@@ -192,7 +192,7 @@ object ConnectedComponents {
       .withTargetPlatforms(platforms(first_iteration_platform_id))
       .withBroadcast(filter_unstable.last, "unstable_ids")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
-      .filter(_.has_changed != -1)
+      .filter(_.has_changed != -1) // TODO JRK no magic numbers
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var StableEdges = SelectMinimumAndReduceOperator.last
@@ -267,7 +267,7 @@ object ConnectedComponents {
         .withTargetPlatforms(platforms(platform_id))
 
       filter_unstable += IdUpdate.last
-        .filter(_._2 == 0)
+        .filter(_._2 == 1)
         .withTargetPlatforms(platforms(platform_id))
 
       UnstableEdges += SelectMinimumAndReduceOperator.last

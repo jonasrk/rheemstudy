@@ -267,7 +267,7 @@ object ConnectedComponents {
         .withTargetPlatforms(platforms(platform_id))
 
       filter_unstable += IdUpdate.last
-        .filter(_._2 == 1)
+        .filter(_._2 == 0) // TODO JRK also 0 becuase the distinction happens in the TagStableEdges UDF
         .withTargetPlatforms(platforms(platform_id))
 
       UnstableEdges += SelectMinimumAndReduceOperator.last

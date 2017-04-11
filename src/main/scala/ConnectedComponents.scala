@@ -183,7 +183,7 @@ object ConnectedComponents {
       .filter(_._2 == 0)
       .withTargetPlatforms(platforms(first_iteration_platform_id))
     filter_unstable += IdUpdate.last
-      .filter(_._2 == 1) // TODO JRK Why not 1?
+      .filter(_._2 == 0) // TODO JRK Why not 1?
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var UnstableEdges = new ListBuffer[DataQuanta[edge]]
@@ -196,11 +196,11 @@ object ConnectedComponents {
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var StableEdges = SelectMinimumAndReduceOperator.last
-          .mapJava(new TagStableEdges)
+      .mapJava(new TagStableEdges)
       .withTargetPlatforms(platforms(first_iteration_platform_id))
-          .withBroadcast(filter_unstable.last, "unstable_ids")
+      .withBroadcast(filter_unstable.last, "unstable_ids")
       .withTargetPlatforms(platforms(first_iteration_platform_id))
-          .filter(_.has_changed == -1)
+      .filter(_.has_changed == -1)
       .withTargetPlatforms(platforms(first_iteration_platform_id))
 
     var iteration_list = planBuilder
@@ -267,7 +267,7 @@ object ConnectedComponents {
         .withTargetPlatforms(platforms(platform_id))
 
       filter_unstable += IdUpdate.last
-        .filter(_._2 == 0) // TODO JRK also 0 becuase the distinction happens in the TagStableEdges UDF
+        .filter(_._2 == 0) // TODO JRK also 0 because the distinction happens in the TagStableEdges UDF
         .withTargetPlatforms(platforms(platform_id))
 
       UnstableEdges += SelectMinimumAndReduceOperator.last

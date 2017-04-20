@@ -1,6 +1,5 @@
 import org.qcri.rheem.api.DataQuantaBuilder;
 import org.qcri.rheem.api.JavaPlanBuilder;
-import org.qcri.rheem.basic.data.Tuple2;
 import org.qcri.rheem.core.api.RheemContext;
 import org.qcri.rheem.core.function.ExecutionContext;
 import org.qcri.rheem.core.function.FunctionDescriptor;
@@ -12,9 +11,8 @@ import org.qcri.rheem.spark.Spark;
 import java.net.MalformedURLException;
 import java.util.*;
 
-
 /**
- * This class executes a stochastic gradient descent optimization on Rheem.
+ * This class executes a stochastic variance reduced gradient optimization on Rheem.
  */
 public class SvrgUnrolled {
 
@@ -72,14 +70,7 @@ public class SvrgUnrolled {
     public void execute(String fileName, int features) {
         RheemContext rheemContext = new RheemContext().with(Java.basicPlugin()).with(Spark.basicPlugin());
         JavaPlanBuilder javaPlanBuilder = new JavaPlanBuilder(rheemContext)
-                .withUdfJarOf(WeightsUpdateFullIteration.class)
-                .withUdfJarOf(Sum.class)
-                .withUdfJarOf(WeightsUpdate.class)
-                .withUdfJarOf(ComputeLogisticGradient.class)
-                .withUdfJarOf(ComputeLogisticGradientFullIteration.class)
-                .withUdfJarOf(Transform.class)
-                .withUdfJarOf(SvrgUnrolled.class)
-                .withUdfJarOf(this.getClass()); // TODO JRK redundant
+                .withUdfJarOf(this.getClass());
 
         List<double[]> weights = Arrays.asList(new double[features]);
         final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder

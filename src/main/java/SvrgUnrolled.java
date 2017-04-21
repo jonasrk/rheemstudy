@@ -70,6 +70,13 @@ public class SvrgUnrolled {
     public void execute(String fileName, int features) {
         RheemContext rheemContext = new RheemContext().with(Java.basicPlugin()).with(Spark.basicPlugin());
         JavaPlanBuilder javaPlanBuilder = new JavaPlanBuilder(rheemContext)
+                .withUdfJarOf(WeightsUpdateFullIteration.class)
+                .withUdfJarOf(Sum.class)
+                .withUdfJarOf(WeightsUpdate.class)
+                .withUdfJarOf(ComputeLogisticGradient.class)
+                .withUdfJarOf(ComputeLogisticGradientFullIteration.class)
+                .withUdfJarOf(Transform.class)
+                .withUdfJarOf(SvrgUnrolled.class)
                 .withUdfJarOf(this.getClass());
 
         List<double[]> weights = Arrays.asList(new double[features]);

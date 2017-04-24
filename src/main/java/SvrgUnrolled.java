@@ -24,7 +24,7 @@ public class SvrgUnrolled {
     //these are for SVRG/mini run to convergence
     static int sampleSize = 10;
     static double accuracy = 0.001;
-    static int max_iterations = 1000;
+    static int max_iterations = 1100;
     static int iterations, partial_n = 500; // so far 650 was maximum
 
     static Platform full_iteration_platform, partial_iteration_platform;
@@ -191,7 +191,7 @@ public class SvrgUnrolled {
                         .withTargetPlatform(partial_iteration_platform);
 
                 PartialOperatorList.add(transformBuilder
-                        .sample(1)
+                        .sample(10)
                         .withTargetPlatform(partial_iteration_platform)
 
                         .map(new ComputeLogisticGradient())
@@ -210,7 +210,14 @@ public class SvrgUnrolled {
         }
         // END other iterations
 
-        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(FullOperatorList.get(FullOperatorList.size() - 1).collect())));
+        Collection<double[]>  resultsCost = transformBuilder
+                .map(new Cost())
+                .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
+                .reduce(new Sum())
+                .collect();
+
+//        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(PartialOperatorList.get(PartialOperatorList.size() - 1).collect())));
+        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(resultsCost)));
     }
 }
 
@@ -405,6 +412,31 @@ class WeightsUpdateFullIteration implements FunctionDescriptor.ExtendedSerializa
     public void open(ExecutionContext executionContext) {
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
         this.current_iteration = ((Integer) executionContext.getBroadcast("current_iteration").iterator().next());
+    }
+}
+
+class Cost implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
+
+    double[] weights;
+
+    @Override
+    public double[] apply(double[] point) {
+        double dot = 0;
+        for (int j = 0; j < weights.length; j++)
+            dot += weights[j] * point[j + 1];
+
+        double cost = 1 + Math.exp(-1 * point[0] * dot);
+        cost = Math.log(cost);
+
+        double[] out = {cost};
+//        System.out.println("cost:");
+//        System.out.println(cost);
+        return out;
+    }
+
+    @Override
+    public void open(ExecutionContext executionContext) {
+        this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
     }
 }
 

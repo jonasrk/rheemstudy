@@ -25,9 +25,10 @@ public class SvrgUnrolled {
     static int sampleSize = 10;
     static double accuracy = 0.001;
     static int max_iterations = 1000;
-    static int iterations = 500; // so far 650 was maximum
+    static int iterations, partial_n = 500; // so far 650 was maximum
 
     static Platform full_iteration_platform, partial_iteration_platform;
+
 
     public static void main (String... args) throws MalformedURLException {
 
@@ -50,9 +51,10 @@ public class SvrgUnrolled {
                 partial_iteration_platform = Java.platform();
             }
             iterations = Integer.parseInt(args[7]);
+            partial_n = Integer.parseInt(args[8]);
         }
         else {
-            System.out.println("Usage: java <main class> [<dataset path> <dataset size> <#features> <max iterations> <accuracy> <sample size> <platform:all_spark|all_java|mixed> <iterations>]");
+            System.out.println("Usage: java <main class> [<dataset path> <dataset size> <#features> <max iterations> <accuracy> <sample size> <platform:all_spark|all_java|mixed> <iterations> <partial_n>]");
             System.out.println("Loading default values");
         }
 
@@ -68,7 +70,22 @@ public class SvrgUnrolled {
     }
 
     public void execute(String fileName, int features) {
-        RheemContext rheemContext = new RheemContext().with(Java.basicPlugin()).with(Spark.basicPlugin());
+
+        RheemContext rheemContext;
+
+        if (full_iteration_platform == partial_iteration_platform){
+            if (full_iteration_platform == Spark.platform()){
+                System.out.println("Loading only SPARK platform.");
+                rheemContext = new RheemContext().with(Spark.basicPlugin());
+            } else {
+                System.out.println("Loading only JAVA platform.");
+                rheemContext = new RheemContext().with(Java.basicPlugin());
+            }
+        } else {
+            System.out.println("Loading both the SPARK and JAVA platform.");
+            rheemContext = new RheemContext().with(Java.basicPlugin()).with(Spark.basicPlugin());
+        }
+
         JavaPlanBuilder javaPlanBuilder = new JavaPlanBuilder(rheemContext)
                 .withUdfJarOf(WeightsUpdateFullIteration.class)
                 .withUdfJarOf(Sum.class)
@@ -141,7 +158,7 @@ public class SvrgUnrolled {
 
         for (int i = 1; i < iterations; i++) {
 
-            if (i % 3 == 0){
+            if (i % partial_n == 0){
 
                 FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())

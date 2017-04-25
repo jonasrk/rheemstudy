@@ -53,32 +53,32 @@
         <dependency>
             <groupId>org.qcri.rheem</groupId>
             <artifactId>rheem-core</artifactId>
-            <version>0.4.0-SNAPSHOT</version>
+            <version>0.2.2-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.qcri.rheem</groupId>
             <artifactId>rheem-basic</artifactId>
-            <version>0.4.0-SNAPSHOT</version>
+            <version>0.2.2-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.qcri.rheem</groupId>
             <artifactId>rheem-java</artifactId>
-            <version>0.4.0-SNAPSHOT</version>
+            <version>0.2.2-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.qcri.rheem</groupId>
             <artifactId>rheem-spark</artifactId>
-            <version>0.4.0-SNAPSHOT</version>
+            <version>0.2.2-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.qcri.rheem</groupId>
             <artifactId>rheem-sqlite3</artifactId>
-            <version>0.4.0-SNAPSHOT</version>
+            <version>0.2.2-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.qcri.rheem</groupId>
             <artifactId>rheem-api</artifactId>
-            <version>0.4.0-SNAPSHOT</version>
+            <version>0.2.2-SNAPSHOT</version>
         </dependency>
 
 

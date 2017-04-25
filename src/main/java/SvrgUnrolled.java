@@ -87,13 +87,6 @@ public class SvrgUnrolled {
         }
 
         JavaPlanBuilder javaPlanBuilder = new JavaPlanBuilder(rheemContext)
-                .withUdfJarOf(WeightsUpdateFullIteration.class)
-                .withUdfJarOf(Sum.class)
-                .withUdfJarOf(WeightsUpdate.class)
-                .withUdfJarOf(ComputeLogisticGradient.class)
-                .withUdfJarOf(ComputeLogisticGradientFullIteration.class)
-                .withUdfJarOf(Transform.class)
-                .withUdfJarOf(SvrgUnrolled.class)
                 .withUdfJarOf(this.getClass());
 
         List<double[]> weights = Arrays.asList(new double[features]);
@@ -180,7 +173,8 @@ public class SvrgUnrolled {
                         .withName("compute")
 
                         .reduce(new Sum()).withName("reduce")
-                        .withTargetPlatform(full_iteration_platform)); // returns the gradientBar from the full iteration for all training examples
+                        .withTargetPlatform(full_iteration_platform)
+                        .map(x -> x)); // returns the gradientBar from the full iteration for all training examples
 
             } else { // partial iteration
 
@@ -217,7 +211,7 @@ public class SvrgUnrolled {
                 .collect();
 
 //        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(PartialOperatorList.get(PartialOperatorList.size() - 1).collect())));
-        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(resultsCost)));
+        System.out.println("Output cost:" + Arrays.toString(RheemCollections.getSingle(resultsCost)));
     }
 }
 

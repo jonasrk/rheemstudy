@@ -17,12 +17,9 @@ import java.util.*;
 public class SvrgUnrolled {
 
     // Default parameters.
-    private static String relativePath = "svrg/src/main/resources/adult.zeros";
-
+    private static String relativePath;
     private static int features, sampleSize, iterations, partial_n;
-
     private static Platform full_iteration_platform, partial_iteration_platform;
-
 
     public static void main (String... args) throws MalformedURLException {
 
@@ -49,8 +46,7 @@ public class SvrgUnrolled {
             System.out.println("Loading default values");
         }
 
-        String file = relativePath;
-
+        System.out.println("dataset path:" + relativePath);
         System.out.println("iterations:" + iterations);
         System.out.println("full_iteration_platform:" + full_iteration_platform);
         System.out.println("partial_iteration_platform:" + partial_iteration_platform);
@@ -58,7 +54,7 @@ public class SvrgUnrolled {
         System.out.println("partial_n:" + partial_n);
         System.out.println("features:" + features);
 
-        new SvrgUnrolled().execute(file, features);
+        new SvrgUnrolled().execute(relativePath, features);
     }
 
     public void execute(String fileName, int features) {
@@ -84,20 +80,19 @@ public class SvrgUnrolled {
         List<double[]> weights = Arrays.asList(new double[features]);
         final DataQuantaBuilder<?, double[]> weightsBuilder = javaPlanBuilder
                 .loadCollection(weights)
-                .withTargetPlatform(partial_iteration_platform)
+                .withTargetPlatform(full_iteration_platform)
                 .withName("init weights");
 
         final DataQuantaBuilder<?, double[]> transformBuilder = javaPlanBuilder
                 .readTextFile(fileName).withName("source")
-                .withTargetPlatform(partial_iteration_platform)
+                .withTargetPlatform(full_iteration_platform)
                 .map(new Transform(features)).withName("transform")
-                .withTargetPlatform(partial_iteration_platform); // TODO JRK Double Check which platform should do this
+                .withTargetPlatform(full_iteration_platform);
 
 
         // START iteration ZERO
 
         List<Integer> current_iteration = Arrays.asList(0);
-
         DataQuantaBuilder<?, Integer> iteration_list = javaPlanBuilder
                 .loadCollection(current_iteration)
                 .withTargetPlatform(full_iteration_platform);
@@ -134,7 +129,7 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withTargetPlatform(full_iteration_platform)
                         .withName("update")
-        );
+        ); // TODO JRK DRY
 
         // END iteration ZERO
 
@@ -145,18 +140,17 @@ public class SvrgUnrolled {
 
             if (i % partial_n == 0){
 
+                current_iteration = Arrays.asList(i);
+                iteration_list = javaPlanBuilder
+                        .loadCollection(current_iteration)
+                        .withTargetPlatform(full_iteration_platform);
+
                 FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withBroadcast(iteration_list, "current_iteration")
                         .withTargetPlatform(full_iteration_platform)
                         .withName("update"));
-
-                current_iteration = Arrays.asList(i);
-
-                iteration_list = javaPlanBuilder
-                        .loadCollection(current_iteration)
-                        .withTargetPlatform(full_iteration_platform);
 
                 muOperatorList.add(transformBuilder
                         .map(new ComputeLogisticGradientFullIteration())
@@ -171,7 +165,6 @@ public class SvrgUnrolled {
             } else { // partial iteration
 
                 current_iteration = Arrays.asList(i);
-
                 iteration_list = javaPlanBuilder
                         .loadCollection(current_iteration)
                         .withTargetPlatform(partial_iteration_platform);

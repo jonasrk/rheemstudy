@@ -18,7 +18,7 @@ public class SvrgUnrolled {
 
     // Default parameters.
     private static String relativePath;
-    private static int features, sampleSize, iterations, partial_n;
+    private static int features, sampleSize, iterations, partial_n, dataset_size;
     private static Platform full_iteration_platform, partial_iteration_platform;
 
     public static void main (String... args) throws MalformedURLException {
@@ -40,13 +40,15 @@ public class SvrgUnrolled {
             }
             iterations = Integer.parseInt(args[4]);
             partial_n = Integer.parseInt(args[5]);
+            dataset_size = Integer.parseInt(args[6]);
         }
         else {
-            System.out.println("Usage: java <main class> [<dataset path> <#features> <sample size> <platform:all_spark|all_java|mixed> <iterations> <partial_n>]");
+            System.out.println("Usage: java <main class> [<dataset path> <#features> <sample size> <platform:all_spark|all_java|mixed> <iterations> <partial_n> <dataset_size>]");
             System.out.println("Loading default values");
         }
 
         System.out.println("dataset path:" + relativePath);
+        System.out.println("dataset_size:" + dataset_size);
         System.out.println("iterations:" + iterations);
         System.out.println("full_iteration_platform:" + full_iteration_platform);
         System.out.println("partial_iteration_platform:" + partial_iteration_platform);
@@ -97,6 +99,11 @@ public class SvrgUnrolled {
                 .loadCollection(current_iteration)
                 .withTargetPlatform(full_iteration_platform);
 
+        List<Integer> count = Arrays.asList(dataset_size);
+        DataQuantaBuilder<?, Integer> count_list = javaPlanBuilder
+                .loadCollection(count)
+                .withTargetPlatform(full_iteration_platform);
+
         // Operator Lists:
         ArrayList<DataQuantaBuilder<?, double[]>> FullOperatorList = new ArrayList<>();
         ArrayList<DataQuantaBuilder<?, double[]>> muOperatorList = new ArrayList<>();
@@ -118,6 +125,7 @@ public class SvrgUnrolled {
                         .map(new WeightsUpdateFullIteration())
                         .withBroadcast(weightsBuilder, "weights")
                         .withBroadcast(iteration_list, "current_iteration")
+                        .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
                         .withName("update")
         );
@@ -127,6 +135,7 @@ public class SvrgUnrolled {
                         .map(new WeightsUpdateFullIteration())
                         .withBroadcast(weightsBuilder, "weights")
                         .withBroadcast(iteration_list, "current_iteration")
+                        .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
                         .withName("update")
         ); // TODO JRK DRY
@@ -149,18 +158,18 @@ public class SvrgUnrolled {
                         .map(new WeightsUpdateFullIteration())
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withBroadcast(iteration_list, "current_iteration")
+                        .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("update"));
+                        .withName("update")); // TODO JRK Why this ordering of full and mu operator?
 
                 muOperatorList.add(transformBuilder
                         .map(new ComputeLogisticGradientFullIteration())
-                        .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
+                        .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weights") // TODO JRK Why did I use the partial weights at first?
                         .withTargetPlatform(full_iteration_platform)
                         .withName("compute")
 
                         .reduce(new Sum()).withName("reduce")
-                        .withTargetPlatform(full_iteration_platform) // returns the gradientBar from the full iteration for all training examples
-                        .map(x -> x)); // bug workaround
+                        .withTargetPlatform(full_iteration_platform)); // returns the gradientBar from the full iteration for all training examples
 
             } else { // partial iteration
 
@@ -179,10 +188,14 @@ public class SvrgUnrolled {
                         .withTargetPlatform(partial_iteration_platform)
                         .withName("compute") // returns both grad and gradBar in a single array
 
+                        .reduce(new Sum()).withName("reduce")
+                        .withTargetPlatform(full_iteration_platform)
+
                         .map(new WeightsUpdate())
                         .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withBroadcast(iteration_list, "current_iteration")
+                        .withBroadcast(count_list, "count")
                         .withTargetPlatform(partial_iteration_platform)
                         .withName("update"));
             }
@@ -262,7 +275,7 @@ class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializable
             gradient[j + 1] = ((1 / (1 + Math.exp(-1 * dot))) - point[0]) * point[j + 1];
 
         gradient[0] = 1; //counter for the step size required in the update
-        return gradient;
+        return gradient; // TODO JRK DRY
     }
 
     @Override
@@ -289,33 +302,12 @@ class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializable
     }
 }
 
-class Sum implements FunctionDescriptor.SerializableBinaryOperator<double[]> {
-
-    @Override
-    public double[] apply(double[] o, double[] o2) {
-        double[] g1 = o;
-        double[] g2 = o2;
-
-        if (g2 == null) //samples came from one partition only
-            return g1;
-
-        if (g1 == null) //samples came from one partition only
-            return g2;
-
-        double[] sum = new double[g1.length];
-        sum[0] = g1[0] + g2[0]; //count
-        for (int i = 1; i < g1.length; i++)
-            sum[i] = g1[i] + g2[i];
-
-        return sum;
-    }
-}
-
 class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<double[], double[]> {
 
     double[] weights;
     double[] mu;
     int current_iteration;
+    int count;
     double lambda = 0;
 
     double stepSize = 1;
@@ -331,7 +323,6 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
     @Override
     public double[] apply(double[] input) {
 
-        double count = 100000;//input[0]; // TODO JRK Do not hardcode
         double alpha = (stepSize / (current_iteration+1));
 
         double[] newWeights = new double[weights.length];
@@ -343,7 +334,7 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
 //            double gradient_term = input[j + 1];
 //            newWeights[j] = regulizer_term * old_weight_term - step_size_term * gradient_term;
 
-            double svrg_gradient_term =  input[j + 1] - input[weights.length + j + 2] + (1.0/count) * mu[j];
+            double svrg_gradient_term =  input[j + 1] - input[weights.length + j + 2] + (1.0/count) * mu[j]; // TODO JRK Shouldn't count actually be the sample size?
             double svrg_regulizer_term = lambda*alpha*weights[j];
             double svrg_stepsize_term = alpha;
             newWeights[j] = old_weight_term - svrg_stepsize_term * svrg_gradient_term + svrg_regulizer_term;
@@ -356,6 +347,7 @@ class WeightsUpdate implements FunctionDescriptor.ExtendedSerializableFunction<d
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
         this.mu = (double[]) executionContext.getBroadcast("mu").iterator().next();
         this.current_iteration = ((Integer) executionContext.getBroadcast("current_iteration").iterator().next());
+        this.count = ((Integer) executionContext.getBroadcast("count").iterator().next());
     }
 }
 
@@ -363,6 +355,7 @@ class WeightsUpdateFullIteration implements FunctionDescriptor.ExtendedSerializa
 
     double[] weights;
     int current_iteration;
+    int count;
 
     double stepSize = 1;
     double regulizer = 0;
@@ -377,7 +370,6 @@ class WeightsUpdateFullIteration implements FunctionDescriptor.ExtendedSerializa
     @Override
     public double[] apply(double[] input) {
 
-        double count = input[0];
         double alpha = (stepSize / (current_iteration+1));
 
         double[] newWeights = new double[weights.length];
@@ -391,6 +383,7 @@ class WeightsUpdateFullIteration implements FunctionDescriptor.ExtendedSerializa
     public void open(ExecutionContext executionContext) {
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
         this.current_iteration = ((Integer) executionContext.getBroadcast("current_iteration").iterator().next());
+        this.count = ((Integer) executionContext.getBroadcast("count").iterator().next());
     }
 }
 
@@ -416,6 +409,28 @@ class Cost implements FunctionDescriptor.ExtendedSerializableFunction<double[], 
     @Override
     public void open(ExecutionContext executionContext) {
         this.weights = (double[]) executionContext.getBroadcast("weights").iterator().next();
+    }
+}
+
+class Sum implements FunctionDescriptor.SerializableBinaryOperator<double[]> {
+
+    @Override
+    public double[] apply(double[] o, double[] o2) {
+        double[] g1 = o;
+        double[] g2 = o2;
+
+        if (g2 == null) //samples came from one partition only
+            return g1;
+
+        if (g1 == null) //samples came from one partition only
+            return g2;
+
+        double[] sum = new double[g1.length];
+        sum[0] = g1[0] + g2[0]; //count
+        for (int i = 1; i < g1.length; i++)
+            sum[i] = g1[i] + g2[i];
+
+        return sum;
     }
 }
 

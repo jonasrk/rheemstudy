@@ -173,8 +173,8 @@ public class SvrgUnrolled {
                         .withName("compute")
 
                         .reduce(new Sum()).withName("reduce")
-                        .withTargetPlatform(full_iteration_platform)
-                        .map(x -> x)); // returns the gradientBar from the full iteration for all training examples
+                        .withTargetPlatform(full_iteration_platform) // returns the gradientBar from the full iteration for all training examples
+                        .map(x -> x)); // bug workaround
 
             } else { // partial iteration
 
@@ -185,7 +185,7 @@ public class SvrgUnrolled {
                         .withTargetPlatform(partial_iteration_platform);
 
                 PartialOperatorList.add(transformBuilder
-                        .sample(10)
+                        .sample(sampleSize)
                         .withTargetPlatform(partial_iteration_platform)
 
                         .map(new ComputeLogisticGradient())

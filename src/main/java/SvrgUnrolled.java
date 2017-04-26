@@ -401,8 +401,6 @@ class Cost implements FunctionDescriptor.ExtendedSerializableFunction<double[], 
         cost = Math.log(cost);
 
         double[] out = {cost};
-//        System.out.println("cost:");
-//        System.out.println(cost);
         return out;
     }
 
@@ -433,51 +431,3 @@ class Sum implements FunctionDescriptor.SerializableBinaryOperator<double[]> {
         return sum;
     }
 }
-
-//class ComputeNorm implements FunctionDescriptor.ExtendedSerializableFunction<double[], Tuple2<Double, Double>> {
-//
-//    double[] previousWeights;
-//
-//    @Override
-//    public Tuple2<Double, Double> apply(double[] weights) {
-//        double normDiff = 0.0;
-//        double normWeights = 0.0;
-//        for (int j = 0; j < weights.length; j++) {
-////            normDiff += Math.sqrt(Math.pow(Math.abs(weights[j] - input[j]), 2));
-//            normDiff += Math.abs(weights[j] - previousWeights[j]);
-////            normWeights += Math.sqrt(Math.pow(Math.abs(input[j]), 2));
-//            normWeights += Math.abs(weights[j]);
-//        }
-//        return new Tuple2(normDiff, normWeights);
-//    }
-//
-//    @Override
-//    public void open(ExecutionContext executionContext) {
-//        this.previousWeights = (double[]) executionContext.getBroadcast("weights").iterator().next();
-//    }
-//}
-//
-//class LoopCondition implements FunctionDescriptor.ExtendedSerializablePredicate<Collection<Tuple2<Double, Double>>> {
-//
-//    public double accuracy;
-//    public int max_iterations;
-//
-//    private int current_iteration;
-//
-//    public LoopCondition(double accuracy, int max_iterations) {
-//        this.accuracy = accuracy;
-//        this.max_iterations = max_iterations;
-//    }
-//
-//    @Override
-//    public boolean test(Collection<Tuple2<Double, Double>> collection) {
-//        Tuple2<Double, Double> input = RheemCollections.getSingle(collection);
-//        System.out.println("Running iteration: " + current_iteration);
-//        return (input.field0 < accuracy * Math.max(input.field1, 1.0) || current_iteration > max_iterations);
-//    }
-//
-//    @Override
-//    public void open(ExecutionContext executionContext) {
-//        this.current_iteration = executionContext.getCurrentIteration();
-//    }
-//}

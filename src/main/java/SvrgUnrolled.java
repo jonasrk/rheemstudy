@@ -17,17 +17,11 @@ import java.util.*;
 public class SvrgUnrolled {
 
     // Default parameters.
-    static String relativePath = "svrg/src/main/resources/adult.zeros";
-    static int datasetSize  = 100827;
-    static int features = 123;
+    private static String relativePath = "svrg/src/main/resources/adult.zeros";
 
-    //these are for SVRG/mini run to convergence
-    static int sampleSize = 10;
-    static double accuracy = 0.001;
-    static int max_iterations = 1100;
-    static int iterations, partial_n = 500; // so far 650 was maximum
+    private static int features, sampleSize, iterations, partial_n;
 
-    static Platform full_iteration_platform, partial_iteration_platform;
+    private static Platform full_iteration_platform, partial_iteration_platform;
 
 
     public static void main (String... args) throws MalformedURLException {
@@ -35,36 +29,34 @@ public class SvrgUnrolled {
         //Usage: <data_file> <#features> <sparse> <binary>
         if (args.length > 0) {
             relativePath = args[0];
-            datasetSize = Integer.parseInt(args[1]);
-            features = Integer.parseInt(args[2]);
-            max_iterations = Integer.parseInt(args[3]);
-            accuracy = Double.parseDouble(args[4]);
-            sampleSize = Integer.parseInt(args[5]);
-            if (args[6].equals("all_spark")){
+            features = Integer.parseInt(args[1]);
+            sampleSize = Integer.parseInt(args[2]);
+            if (args[3].equals("all_spark")){
                 full_iteration_platform = Spark.platform();
                 partial_iteration_platform = Spark.platform();
-            } else if (args[6].equals("all_java")){
+            } else if (args[3].equals("all_java")){
                 full_iteration_platform = Java.platform();
                 partial_iteration_platform = Java.platform();
-            } else if (args[6].equals("mixed")){
+            } else if (args[3].equals("mixed")){
                 full_iteration_platform = Spark.platform();
                 partial_iteration_platform = Java.platform();
             }
-            iterations = Integer.parseInt(args[7]);
-            partial_n = Integer.parseInt(args[8]);
+            iterations = Integer.parseInt(args[4]);
+            partial_n = Integer.parseInt(args[5]);
         }
         else {
-            System.out.println("Usage: java <main class> [<dataset path> <dataset size> <#features> <max iterations> <accuracy> <sample size> <platform:all_spark|all_java|mixed> <iterations> <partial_n>]");
+            System.out.println("Usage: java <main class> [<dataset path> <#features> <sample size> <platform:all_spark|all_java|mixed> <iterations> <partial_n>]");
             System.out.println("Loading default values");
         }
 
         String file = relativePath;
 
-        System.out.println("max #iterations:" + max_iterations);
-        System.out.println("accuracy:" + accuracy);
         System.out.println("iterations:" + iterations);
         System.out.println("full_iteration_platform:" + full_iteration_platform);
         System.out.println("partial_iteration_platform:" + partial_iteration_platform);
+        System.out.println("sampleSize:" + sampleSize);
+        System.out.println("partial_n:" + partial_n);
+        System.out.println("features:" + features);
 
         new SvrgUnrolled().execute(file, features);
     }

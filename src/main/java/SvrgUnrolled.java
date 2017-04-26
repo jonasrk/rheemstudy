@@ -204,8 +204,12 @@ public class SvrgUnrolled {
 
         Collection<double[]>  resultsCost = transformBuilder
                 .map(new Cost())
+                .withTargetPlatform(full_iteration_platform)
                 .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
+
                 .reduce(new Sum())
+                .withTargetPlatform(full_iteration_platform)
+
                 .collect();
 
 //        System.out.println("Output weights:" + Arrays.toString(RheemCollections.getSingle(PartialOperatorList.get(PartialOperatorList.size() - 1).collect())));

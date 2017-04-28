@@ -40,7 +40,6 @@ public class SvrgUnrolled {
             }
             iterations = Integer.parseInt(args[4]);
             partial_n = Integer.parseInt(args[5]);
-            dataset_size = Integer.parseInt(args[6]);
         }
         else {
             System.out.println("Usage: java <main class> [<dataset path> <#features> <sample size> <platform:all_spark|all_java|mixed> <iterations> <partial_n> <dataset_size>]");
@@ -180,7 +179,7 @@ public class SvrgUnrolled {
 
                 PartialOperatorList.add(transformBuilder
                         .sample(sampleSize)
-                        .withTargetPlatform(partial_iteration_platform)
+                        .withTargetPlatform(full_iteration_platform)
 
                         .map(new ComputeLogisticGradient())
                         .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weightsBar")

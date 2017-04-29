@@ -88,7 +88,8 @@ public class SvrgUnrolled {
                 .readTextFile(fileName).withName("source")
                 .withTargetPlatform(full_iteration_platform)
                 .map(new Transform(features)).withName("transform")
-                .withTargetPlatform(full_iteration_platform);
+                .withTargetPlatform(full_iteration_platform)
+                .withName("load points");
 
 
         // START iteration ZERO
@@ -96,12 +97,14 @@ public class SvrgUnrolled {
         List<Integer> current_iteration = Arrays.asList(0);
         DataQuantaBuilder<?, Integer> iteration_list = javaPlanBuilder
                 .loadCollection(current_iteration)
-                .withTargetPlatform(full_iteration_platform);
+                .withTargetPlatform(full_iteration_platform)
+                .withName("build iteration data quantum");
 
         List<Integer> count = Arrays.asList(dataset_size);
         DataQuantaBuilder<?, Integer> count_list = javaPlanBuilder
                 .loadCollection(count)
-                .withTargetPlatform(full_iteration_platform);
+                .withTargetPlatform(full_iteration_platform)
+                .withName("build count data quantum");
 
         // Operator Lists:
         ArrayList<DataQuantaBuilder<?, double[]>> FullOperatorList = new ArrayList<>();
@@ -113,10 +116,11 @@ public class SvrgUnrolled {
                         .map(new ComputeLogisticGradientFullIteration())
                         .withBroadcast(weightsBuilder, "weights")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("compute")
+                        .withName("iteraton zero - compute gradient")
 
                         .reduce(new Sum()).withName("reduce")
                         .withTargetPlatform(full_iteration_platform)
+                        .withName("iteraton zero - sum up")
         );
 
         FullOperatorList.add(
@@ -126,7 +130,7 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("update")
+                        .withName("iteraton zero - update weights for full operator")
         );
 
         PartialOperatorList.add(
@@ -136,7 +140,7 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("update")
+                        .withName("iteraton zero - update weights for partial operator")
         ); // TODO JRK DRY
 
         // END iteration ZERO
@@ -151,7 +155,8 @@ public class SvrgUnrolled {
                 current_iteration = Arrays.asList(i);
                 iteration_list = javaPlanBuilder
                         .loadCollection(current_iteration)
-                        .withTargetPlatform(full_iteration_platform);
+                        .withTargetPlatform(full_iteration_platform)
+                        .withName("iteraton " + i  + ": Full iteration - update iteration data quantum");
 
                 FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
@@ -159,36 +164,40 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("update")); // TODO JRK Why this ordering of full and mu operator?
+                        .withName("iteraton " + i  + ": Full iteration - update weights")); // TODO JRK Why this ordering of full and mu operator?
 
                 muOperatorList.add(transformBuilder
                         .map(new ComputeLogisticGradientFullIteration())
                         .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weights") // TODO JRK Why did I use the partial weights at first?
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("compute")
+                        .withName("iteraton " + i  + ": Full iteration - compute gradient")
 
                         .reduce(new Sum()).withName("reduce")
-                        .withTargetPlatform(full_iteration_platform)); // returns the gradientBar from the full iteration for all training examples
+                        .withTargetPlatform(full_iteration_platform)
+                        .withName("iteraton " + i  + ": Full iteration - sum up")); // returns the gradientBar from the full iteration for all training examples
 
             } else { // partial iteration
 
                 current_iteration = Arrays.asList(i);
                 iteration_list = javaPlanBuilder
                         .loadCollection(current_iteration)
-                        .withTargetPlatform(partial_iteration_platform);
+                        .withTargetPlatform(partial_iteration_platform)
+                        .withName("iteraton " + i  + ": Partial iteration - update iteration data quantum");
 
                 PartialOperatorList.add(transformBuilder
                         .sample(sampleSize)
                         .withTargetPlatform(full_iteration_platform)
+                        .withName("iteraton " + i  + ": Partial iteration - sample points")
 
                         .map(new ComputeLogisticGradient())
                         .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weightsBar")
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withTargetPlatform(partial_iteration_platform)
-                        .withName("compute") // returns both grad and gradBar in a single array
+                        .withName("iteraton " + i  + ": Partial iteration - compute gradient") // returns both grad and gradBar in a single array
 
                         .reduce(new Sum()).withName("reduce")
                         .withTargetPlatform(full_iteration_platform)
+                        .withName("iteraton " + i  + ": Partial iteration - sum up")
 
                         .map(new WeightsUpdate())
                         .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
@@ -196,7 +205,7 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withBroadcast(count_list, "count")
                         .withTargetPlatform(partial_iteration_platform)
-                        .withName("update"));
+                        .withName("iteraton " + i  + ": Partial iteration - update weights"));
             }
         }
         // END other iterations
@@ -205,9 +214,11 @@ public class SvrgUnrolled {
                 .map(new Cost())
                 .withTargetPlatform(full_iteration_platform)
                 .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
+                .withName("calculate cost")
 
                 .reduce(new Sum())
                 .withTargetPlatform(full_iteration_platform)
+                .withName("sum up cost")
 
                 .collect();
 

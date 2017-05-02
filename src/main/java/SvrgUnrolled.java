@@ -40,6 +40,7 @@ public class SvrgUnrolled {
             }
             iterations = Integer.parseInt(args[4]);
             partial_n = Integer.parseInt(args[5]);
+            dataset_size = Integer.parseInt(args[6]);
         }
         else {
             System.out.println("Usage: java <main class> [<dataset path> <#features> <sample size> <platform:all_spark|all_java|mixed> <iterations> <partial_n> <dataset_size>]");
@@ -266,6 +267,7 @@ class ComputeLogisticGradientFullIteration implements FunctionDescriptor.Extende
             gradient[j + 1] = ((1 / (1 + Math.exp(-1 * dot))) - point[0]) * point[j + 1];
 
         gradient[0] = 1; //counter for the step size required in the update
+
         return gradient;
     }
 
@@ -297,6 +299,7 @@ class ComputeLogisticGradient implements FunctionDescriptor.ExtendedSerializable
         double[] sumGrad = calculateGradient(weights, point);
         double[] sumGradBar = calculateGradient(weightsBar, point);
         double[] mergedGradients = mergeArrays(sumGrad, sumGradBar);
+
         return mergedGradients;
     }
 

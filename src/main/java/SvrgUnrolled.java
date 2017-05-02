@@ -117,11 +117,11 @@ public class SvrgUnrolled {
                         .map(new ComputeLogisticGradientFullIteration())
                         .withBroadcast(weightsBuilder, "weights")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton zero - compute gradient")
+                        .withName("iteration zero - compute gradient")
 
                         .reduce(new Sum()).withName("reduce")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton zero - sum up")
+                        .withName("iteration zero - sum up")
         );
 
         FullOperatorList.add(
@@ -131,7 +131,7 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton zero - update weights for full operator")
+                        .withName("iteration zero - update weights for full operator")
         );
 
         PartialOperatorList.add(
@@ -141,7 +141,7 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton zero - update weights for partial operator")
+                        .withName("iteration zero - update weights for partial operator")
         ); // TODO JRK DRY
 
         // END iteration ZERO
@@ -157,7 +157,7 @@ public class SvrgUnrolled {
                 iteration_list = javaPlanBuilder
                         .loadCollection(current_iteration)
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton " + i  + ": Full iteration - update iteration data quantum");
+                        .withName("iteration " + i  + ": Full iteration - update iteration data quantum");
 
                 FullOperatorList.add(muOperatorList.get(muOperatorList.size() - 1)
                         .map(new WeightsUpdateFullIteration())
@@ -165,17 +165,17 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withBroadcast(count_list, "count")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton " + i  + ": Full iteration - update weights")); // TODO JRK Why this ordering of full and mu operator?
+                        .withName("iteration " + i  + ": Full iteration - update weights")); // TODO JRK Why this ordering of full and mu operator?
 
                 muOperatorList.add(transformBuilder
                         .map(new ComputeLogisticGradientFullIteration())
                         .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weights") // TODO JRK Why did I use the partial weights at first?
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton " + i  + ": Full iteration - compute gradient")
+                        .withName("iteration " + i  + ": Full iteration - compute gradient")
 
                         .reduce(new Sum()).withName("reduce")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton " + i  + ": Full iteration - sum up")); // returns the gradientBar from the full iteration for all training examples
+                        .withName("iteration " + i  + ": Full iteration - sum up")); // returns the gradientBar from the full iteration for all training examples
 
             } else { // partial iteration
 
@@ -183,22 +183,22 @@ public class SvrgUnrolled {
                 iteration_list = javaPlanBuilder
                         .loadCollection(current_iteration)
                         .withTargetPlatform(partial_iteration_platform)
-                        .withName("iteraton " + i  + ": Partial iteration - update iteration data quantum");
+                        .withName("iteration " + i  + ": Partial iteration - update iteration data quantum");
 
                 PartialOperatorList.add(transformBuilder
                         .sample(sampleSize)
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton " + i  + ": Partial iteration - sample points")
+                        .withName("iteration " + i  + ": Partial iteration - sample points")
 
                         .map(new ComputeLogisticGradient())
                         .withBroadcast(FullOperatorList.get(FullOperatorList.size() - 1), "weightsBar")
                         .withBroadcast(PartialOperatorList.get(PartialOperatorList.size() - 1), "weights")
                         .withTargetPlatform(partial_iteration_platform)
-                        .withName("iteraton " + i  + ": Partial iteration - compute gradient") // returns both grad and gradBar in a single array
+                        .withName("iteration " + i  + ": Partial iteration - compute gradient") // returns both grad and gradBar in a single array
 
                         .reduce(new Sum()).withName("reduce")
                         .withTargetPlatform(full_iteration_platform)
-                        .withName("iteraton " + i  + ": Partial iteration - sum up")
+                        .withName("iteration " + i  + ": Partial iteration - sum up")
 
                         .map(new WeightsUpdate())
                         .withBroadcast(muOperatorList.get(muOperatorList.size() - 1), "mu")
@@ -206,7 +206,7 @@ public class SvrgUnrolled {
                         .withBroadcast(iteration_list, "current_iteration")
                         .withBroadcast(count_list, "count")
                         .withTargetPlatform(partial_iteration_platform)
-                        .withName("iteraton " + i  + ": Partial iteration - update weights"));
+                        .withName("iteration " + i  + ": Partial iteration - update weights"));
             }
         }
         // END other iterations
